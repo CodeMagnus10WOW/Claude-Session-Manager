@@ -1,0 +1,2116 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session Canvas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --night: #0c1631;
+    --night-deep: #070d22;
+    --panel: #121e40;
+    --panel-2: #182752;
+    --rule: #263766;
+    --parchment: #efe6cf;
+    --text-2: #c3c8db;
+    --dim: #8e97b5;
+    --faint: #5d688c;
+    --brass: #c9a86a;
+    --aurora: #7ee8c8;
+    --rose: #f0a0a0;
+    --sky-blue: #8fb8ea;
+    --top: 52px;
+    --k: 1;
+    --serif: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+    --sans: "Instrument Sans", system-ui, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--night-deep); color: var(--parchment);
+    font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  /* ---------- Kopfleiste ---------- */
+  .top { position: fixed; z-index: 20; left: 0; right: 0; top: 0; height: var(--top); display: flex; align-items: center; gap: 10px; padding: 0 14px 0 18px;
+    background: rgba(9, 16, 38, .96); border-bottom: 1px solid var(--rule); }
+  .top h1 { margin: 0 6px 0 0; font: italic 600 22px/1 var(--serif); white-space: nowrap; }
+  .modes { display: flex; background: rgba(18, 30, 64, .9); border: 1px solid var(--rule); border-radius: 8px; padding: 2px; }
+  .tab { background: none; border: 0; border-radius: 6px; padding: 4px 12px; color: var(--dim); cursor: pointer; font-size: 13px; }
+  .tab[aria-selected="true"] { background: var(--panel-2); color: var(--parchment); }
+  .counts { display: flex; gap: 6px; margin-left: 8px; }
+  .count { display: inline-flex; align-items: baseline; gap: 5px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 3px 9px;
+    color: var(--dim); font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+  .count b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .count:hover { border-color: var(--rule); color: var(--text-2); }
+  .count[aria-pressed="true"] { border-color: var(--rule); background: var(--panel-2); color: var(--parchment); }
+  .count.ask b { color: var(--brass); } .count.warn b { color: var(--rose); } .count.on b { color: var(--sky-blue); } .count.done b { color: var(--aurora); }
+  .count.zero b { color: var(--faint); }
+  .spacer { flex: 1; }
+  .btn { background: rgba(18, 30, 64, .85); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 11px; cursor: pointer;
+    color: var(--text-2); white-space: nowrap; font-size: 13px; }
+  .btn:hover { border-color: var(--brass); color: var(--parchment); }
+  .btn[aria-pressed="true"] { border-color: var(--aurora); color: var(--aurora); }
+  .btn kbd { font: 11px var(--sans); color: var(--faint); margin-left: 6px; }
+  .btn.primary { background: var(--brass); border-color: var(--brass); color: #1a1405; font-weight: 600; }
+  .btn.primary:hover { background: #d8b97b; color: #1a1405; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  body.mode-cockpit .map-only, body.mode-map .cockpit-only { display: none !important; }
+
+  /* ---------- Cockpit-Raster ---------- */
+  #cockpit { display: contents; }
+  #center { display: contents; }
+  body.mode-cockpit #cockpit { display: grid; grid-template-columns: 340px minmax(0, 1fr); position: fixed; inset: var(--top) 0 0 0; }
+  body.mode-cockpit #center { display: block; position: relative; min-width: 0; overflow: hidden; }
+  body.mode-cockpit #sky, body.mode-cockpit #stage, body.mode-cockpit #chart, body.mode-cockpit .zoom, body.mode-cockpit .hint,
+  body.mode-cockpit .tour, body.mode-cockpit #tip { display: none !important; }
+  body.mode-map #overview { display: none !important; }
+
+  /* ---------- Übersicht (Kacheln) ---------- */
+  #overview { position: absolute; inset: 0; overflow-y: auto; padding: 18px 22px 40px; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+  body.mode-cockpit #center.showing-log #overview { display: none; }
+  .ov-sect { margin: 0 0 22px; }
+  .ov-sect h2 { margin: 0 0 10px; display: flex; align-items: baseline; gap: 10px; font: italic 600 20px/1.2 var(--serif); color: var(--c); }
+  .ov-sect h2 small { font: 500 12px var(--sans); color: var(--faint); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .tile { display: flex; flex-direction: column; gap: 6px; text-align: left; background: linear-gradient(180deg, rgba(24, 39, 82, .7), rgba(16, 27, 58, .8));
+    border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px 12px; cursor: pointer; color: inherit; position: relative; min-height: 120px; }
+  .tile::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--c); }
+  .tile:hover { border-color: color-mix(in srgb, var(--c) 60%, var(--rule)); }
+  .tile.sel { border-color: var(--brass); }
+  .tile-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--dim); }
+  .tile-top .proj { margin-left: auto; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile h3 { margin: 0; font: 600 18px/1.15 var(--serif); color: var(--parchment); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tile .det { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .tile.ask .det { color: var(--parchment); }
+  .tile .note { margin: 0; font-size: 12px; color: var(--brass); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .note::before { content: "Notiz: "; color: var(--faint); }
+  .plan-bar { height: 3px; background: var(--rule); border-radius: 2px; overflow: hidden; }
+  .plan-bar i { display: block; height: 100%; background: var(--c); }
+  .plan-line { font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
+  .tile-actions .btn { padding: 4px 9px; font-size: 12px; }
+  .ov-empty { color: var(--dim); padding: 40px 0; text-align: center; }
+  .ov-empty strong { display: block; font: italic 600 26px var(--serif); color: var(--parchment); margin-bottom: 6px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+    border: 1px solid color-mix(in srgb, var(--c) 50%, transparent); color: var(--c); white-space: nowrap; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  .ask .badge::before, .on .badge::before { animation: pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .ask { --c: var(--brass); } .warn { --c: var(--rose); } .on { --c: var(--sky-blue); } .done { --c: var(--aurora); } .idle { --c: var(--dim); }
+
+  /* ---------- Liste ---------- */
+  #side { position: fixed; z-index: 12; left: 16px; top: calc(var(--top) + 14px); bottom: 66px; width: 340px; display: none; flex-direction: column;
+    background: rgba(12, 21, 48, .93); border: 1px solid var(--rule); border-radius: 12px; backdrop-filter: blur(8px); overflow: hidden; }
+  body.mode-map.side-open #side { display: flex; }
+  body.mode-cockpit #side { position: static; display: flex; width: auto; border: 0; border-right: 1px solid var(--rule); border-radius: 0; backdrop-filter: none;
+    background: rgba(9, 16, 38, .6); }
+  .side-head { padding: 10px 12px 10px; border-bottom: 1px solid var(--rule); display: grid; gap: 8px; }
+  .side-head input, .side-head select, .modal select, .modal input, .modal textarea, #noteInput {
+    width: 100%; background: rgba(18, 30, 64, .9); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 10px; color: var(--parchment); outline: none; }
+  .side-head input:focus, .modal input:focus, .modal textarea:focus, .modal select:focus, #noteInput:focus { border-color: var(--brass); }
+  .side-head .pair { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .side-head select { padding: 5px 6px; font-size: 12px; color: var(--text-2); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-size: 12px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--rule); background: none; color: var(--text-2); cursor: pointer; }
+  .chip:hover { border-color: var(--dim); }
+  .chip[aria-pressed="true"] { border-color: var(--brass); color: var(--parchment); background: rgba(201,168,106,.14); }
+  .chip b { font-weight: 600; color: var(--brass); margin-left: 4px; }
+  .side-list { flex: 1; overflow-y: auto; padding: 4px 6px 8px; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+  .grp { display: flex; align-items: center; gap: 8px; padding: 12px 8px 4px; }
+  .grp span { font: italic 600 17px/1.2 var(--serif); color: var(--c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .grp small { color: var(--faint); font-size: 11px; }
+  .grp button { margin-left: auto; background: none; border: 1px solid var(--rule); border-radius: 6px; color: var(--dim); font-size: 11.5px; padding: 1px 8px; cursor: pointer; white-space: nowrap; }
+  .grp button:hover { color: var(--parchment); border-color: var(--brass); }
+  .item { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%;
+    text-align: left; background: none; border: 0; border-radius: 8px; padding: 7px 8px; cursor: pointer; color: inherit; }
+  .item:hover { background: rgba(24, 39, 82, .7); }
+  .item.sel { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--brass); }
+  .item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  .item.ask .dot { animation: pulse 1.4s infinite; }
+  .item strong { font-weight: 550; font-size: 13.5px; color: var(--parchment); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item small { grid-column: 2 / 4; color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item small.det { color: var(--text-2); }
+  .item.ask small.det { color: var(--brass); }
+  .item.warn small.det { color: var(--rose); }
+  .item small.note { color: var(--brass); }
+  .item small.note::before { content: "Notiz: "; color: var(--faint); }
+  .item .key { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; }
+  .side-empty { padding: 18px 10px; color: var(--dim); font-size: 13px; }
+  .side-empty button { margin-top: 8px; }
+  .side-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--rule); font-size: 11.5px; color: var(--faint); }
+  .side-foot .btn { margin-left: auto; padding: 5px 10px; font-size: 12.5px; }
+
+  /* ---------- Session (Logbuch / Arbeitsfläche) ---------- */
+  #log { position: fixed; top: var(--top); right: 0; bottom: 0; width: min(600px, 100vw); z-index: 25; display: flex; flex-direction: column;
+    background: linear-gradient(180deg, #13204a, #0d1838); border-left: 1px solid var(--rule);
+    transform: translateX(100%); transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+  #log.open { transform: none; box-shadow: -30px 0 80px rgba(0,0,0,.55); }
+  body.mode-cockpit #log { position: absolute; inset: 0; width: auto; transform: none; transition: none; border-left: 0; box-shadow: none; display: none; }
+  body.mode-cockpit #log.open { display: flex; }
+  #log header { padding: 14px 22px 12px; border-bottom: 1px solid var(--rule); position: relative; }
+  #log header::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, var(--c), transparent); }
+  #log h2 { margin: 2px 40px 2px 0; font: 600 26px/1.1 var(--serif); }
+  #log .close { position: absolute; top: 10px; right: 12px; background: none; border: 1px solid transparent; border-radius: 8px; font-size: 13px;
+    color: var(--dim); cursor: pointer; padding: 4px 10px; }
+  #log .close:hover { color: var(--parchment); border-color: var(--rule); }
+  #log .path { color: var(--faint); font: 11px var(--mono); word-break: break-all; }
+  .card-kicker { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+  .card-kicker .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
+  .card-kicker .proj { color: color-mix(in srgb, var(--c) 75%, var(--parchment)); font-weight: 500; }
+  .card-kicker .when { margin-left: auto; white-space: nowrap; }
+  .pstate { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 13px; color: var(--text-2); line-height: 1.4; }
+  .pstate .since { color: var(--faint); font-size: 12px; white-space: nowrap; }
+  .pstate.ask .det { color: var(--parchment); }
+  #paneReplies { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  #paneReplies .btn { border-color: color-mix(in srgb, var(--brass) 55%, var(--rule)); color: var(--parchment); }
+  #panePlan { margin-top: 10px; font-size: 12.5px; }
+  #panePlan summary { cursor: pointer; color: var(--dim); }
+  #panePlan summary b { color: var(--parchment); font-weight: 600; }
+  #panePlan ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+  #panePlan li { display: flex; gap: 8px; align-items: baseline; color: var(--dim); }
+  #panePlan li i { font-style: normal; width: 14px; text-align: center; flex: none; color: var(--faint); }
+  #panePlan li.done { text-decoration: line-through; color: var(--faint); }
+  #panePlan li.cur { color: var(--parchment); } #panePlan li.cur i { color: var(--brass); }
+  #log .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #log .actions .btn { padding: 5px 10px; font-size: 12.5px; }
+  #log .facts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
+  #log .facts div { font-size: 11px; color: var(--dim); }
+  #log .facts b { display: block; color: var(--parchment); font-size: 13.5px; font-weight: 600; }
+  #logMore { margin-top: 10px; font-size: 12.5px; }
+  #logMore > summary { cursor: pointer; color: var(--dim); }
+  #logMore > summary:hover { color: var(--parchment); }
+  #noteInput { margin-top: 8px; resize: vertical; min-height: 40px; font-size: 13px; }
+  #logFiles { margin-top: 10px; font-size: 12.5px; }
+  #logFiles summary { cursor: pointer; color: var(--text-2); }
+  #logFiles .flist { max-height: 180px; overflow-y: auto; margin-top: 6px; display: grid; gap: 2px; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+  #logFiles button { display: flex; gap: 8px; align-items: baseline; text-align: left; background: none; border: 0; border-radius: 6px; padding: 3px 6px;
+    color: var(--text-2); cursor: pointer; font: 12px var(--mono); }
+  #logFiles button:hover { background: var(--panel-2); color: var(--parchment); }
+  #logFiles button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  #logFiles button small { color: var(--faint); font: 11px var(--sans); white-space: nowrap; }
+  #log .stream { flex: 1; overflow-y: auto; padding: 18px 22px 40px; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+  #log .older { color: var(--faint); font-size: 12px; margin: 0 0 12px; }
+  #log .msg { font-size: 13.5px; }
+  #log .msg .who { display: block; font-size: 11px; color: var(--faint); margin-bottom: 3px; }
+  #log .msg.live { color: var(--parchment); }
+  #log .msg.live::after { content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; background: var(--brass); animation: pulse .9s infinite; }
+  #log .msg.sending { opacity: .6; }
+  #log .msg.hit { outline: 2px solid var(--brass); outline-offset: 4px; border-radius: 6px; animation: hit 2.4s ease-out; }
+  @keyframes hit { 0% { background: rgba(201,168,106,.25); } 100% { background: transparent; } }
+  #log details.tools { color: var(--faint); font-size: 12px; margin: 0 0 10px; }
+  #log details.tools summary { cursor: pointer; color: var(--dim); }
+  #log details.tools div { padding: 4px 0 0 14px; font-family: var(--mono); font-size: 11px; line-height: 1.6; word-break: break-all; }
+
+  .msg { font-size: 12.5px; line-height: 1.5; margin: 0 0 10px; word-break: break-word; color: var(--text-2); }
+  .msg.user { color: var(--parchment); background: color-mix(in srgb, var(--c) 13%, transparent);
+    border-left: 2px solid var(--c); padding: 6px 10px; border-radius: 0 8px 8px 0; }
+  .msg.tools { color: var(--faint); font-size: 11.5px; }
+  .msg.tools i { font-style: normal; color: var(--dim); }
+  .msg pre { background: rgba(0,0,0,.28); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; overflow-x: auto;
+    font: 11.5px/1.45 var(--mono); color: var(--text-2); margin: 6px 0; white-space: pre; }
+  .msg code { font: 0.92em var(--mono); background: rgba(0,0,0,.25); padding: 0 4px; border-radius: 4px; }
+  .msg h4 { font: 600 1.05em var(--sans); margin: 8px 0 2px; color: var(--parchment); }
+  .msg p { margin: 0 0 6px; }
+  .msg ul { margin: 0 0 6px; padding-left: 18px; }
+  .msg mark { background: rgba(201,168,106,.4); color: var(--parchment); border-radius: 3px; padding: 0 2px; }
+
+  /* ---------- Steuern ---------- */
+  .console { border-top: 1px solid var(--rule); padding: 12px 18px 14px; background: rgba(7, 13, 34, .55); }
+  .notice { font-size: 12.5px; line-height: 1.45; color: var(--text-2); border-left: 3px solid var(--brass); background: rgba(201,168,106,.08);
+    padding: 8px 12px; border-radius: 0 8px 8px 0; margin-bottom: 10px; }
+  .notice.error { border-left-color: var(--rose); background: rgba(240,160,160,.08); }
+  .perm { border: 1px solid var(--brass); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: rgba(201,168,106,.07); }
+  .perm h3 { margin: 0 0 6px; font: 600 15px/1.3 var(--sans); color: var(--parchment); }
+  .perm h3 b { color: var(--brass); }
+  .perm pre { margin: 0 0 10px; max-height: 160px; overflow: auto; background: rgba(0,0,0,.3); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 8px 10px; font: 11.5px/1.45 var(--mono); color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+  .perm .q { margin: 0 0 10px; font-size: 13px; }
+  .perm .q p { margin: 0 0 6px; color: var(--parchment); }
+  .perm .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .perm .opts button[aria-pressed="true"] { border-color: var(--aurora); color: var(--aurora); }
+  .perm .row { display: flex; gap: 8px; justify-content: flex-end; }
+  #composer textarea { width: 100%; resize: none; min-height: 44px; max-height: 180px; background: rgba(18, 30, 64, .9); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 10px 12px; color: var(--parchment); line-height: 1.45; outline: none; }
+  #composer textarea:focus { border-color: var(--brass); }
+  .crow { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .crow select { background: rgba(18, 30, 64, .9); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 8px; color: var(--text-2); }
+  .crow .state { flex: 1; min-width: 120px; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow .state.on { color: var(--aurora); }
+  .crow .state.ask { color: var(--brass); }
+
+  /* ---------- Suche ---------- */
+  #finder { position: fixed; inset: 0; z-index: 30; display: none; background: rgba(4, 8, 22, .55); backdrop-filter: blur(3px); }
+  #finder.open { display: block; }
+  .finder-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(600px, calc(100vw - 32px));
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .finder-box input { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--rule); padding: 16px 18px; font-size: 17px; outline: none; }
+  .finder-box ul { list-style: none; margin: 0; padding: 6px; max-height: 55vh; overflow-y: auto; }
+  .finder-box li { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 8px; cursor: pointer; }
+  .finder-box li[aria-selected="true"] { background: var(--panel-2); }
+  .finder-box li .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
+  .finder-box li strong { font: 600 17px/1.2 var(--serif); display: block; }
+  .finder-box li small { color: var(--dim); font-size: 12px; }
+  .finder-box li .age { margin-left: auto; color: var(--faint); font-size: 12px; white-space: nowrap; }
+  .finder-box .none { padding: 14px; color: var(--dim); }
+  .finder-box .sect { padding: 10px 12px 4px; font-size: 11.5px; color: var(--faint); list-style: none; cursor: default; }
+  .finder-box li .snip { color: var(--text-2); font-size: 12.5px; line-height: 1.4; margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .finder-box li mark { background: rgba(201,168,106,.3); color: var(--parchment); border-radius: 3px; padding: 0 2px; }
+
+  /* ---------- Neue Session ---------- */
+  .modal { position: fixed; inset: 0; z-index: 35; display: none; background: rgba(4, 8, 22, .6); backdrop-filter: blur(3px); }
+  .modal.open { display: block; }
+  .modal-box { position: absolute; left: 50%; top: 12vh; transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 20px 22px; box-shadow: 0 30px 80px rgba(0,0,0,.6); display: grid; gap: 12px; }
+  .modal h2 { margin: 0; font: italic 600 26px/1.1 var(--serif); }
+  .modal label { display: grid; gap: 5px; font-size: 12.5px; color: var(--dim); }
+  .modal textarea { resize: vertical; min-height: 96px; line-height: 1.45; }
+
+  /* ---------- Funksprüche ---------- */
+  .feed { position: fixed; z-index: 18; top: calc(var(--top) + 12px); right: 16px; width: 300px; display: flex; flex-direction: column; gap: 8px; }
+  .ping { text-align: left; background: rgba(18, 30, 64, .94); border: 1px solid var(--rule); border-left: 3px solid var(--c);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer; animation: ping-in .35s ease-out; transition: opacity .6s; backdrop-filter: blur(6px); color: inherit; }
+  .ping:hover { border-color: var(--brass); border-left-color: var(--c); }
+  .ping strong { display: block; font: 600 16px/1.2 var(--serif); color: var(--parchment); }
+  .ping span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; color: var(--dim); }
+  .ping.gone { opacity: 0; }
+  @keyframes ping-in { from { transform: translateX(16px); opacity: 0; } }
+
+  /* ---------- Karte ---------- */
+  #sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #stage { position: fixed; inset: 0; cursor: grab; touch-action: none; }
+  #stage.panning { cursor: grabbing; }
+  #stage.over-star { cursor: pointer; }
+  #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform, opacity; }
+  .card { position: absolute; width: 380px; height: 300px; border-radius: 10px; overflow: hidden;
+    display: flex; flex-direction: column; cursor: pointer;
+    background: linear-gradient(180deg, rgba(24, 39, 82, .96), rgba(16, 27, 58, .96));
+    border: 1px solid color-mix(in srgb, var(--c) 28%, var(--rule));
+    box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 18px 40px -12px rgba(0,0,0,.6), 0 0 60px -20px color-mix(in srgb, var(--c) 50%, transparent); }
+  .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--c), transparent); }
+  .card.selected { border-color: var(--brass); box-shadow: 0 0 0 calc(1.5px / var(--k)) var(--brass), 0 18px 40px -12px rgba(0,0,0,.6); }
+  .card.dim { opacity: .1; pointer-events: none; }
+  .card.live { border-color: color-mix(in srgb, var(--aurora) 55%, var(--rule)); }
+  .card.asking { border-color: var(--brass); }
+  .card.flare { animation: flare 1.6s ease-out; }
+  @keyframes flare {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 90%, transparent), 0 0 80px 10px color-mix(in srgb, var(--c) 60%, transparent); }
+    100% { box-shadow: 0 0 0 calc(40px / var(--k)) transparent, 0 0 60px -20px transparent; }
+  }
+  .card-head { padding: 16px 18px 6px; }
+  .card-title { font-family: var(--serif); font-weight: 600; font-size: 25px; line-height: 1.08; margin-top: 6px; color: var(--parchment);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .live-tag { display: inline-flex; align-items: center; gap: 6px; color: var(--aurora); font-size: 12px; font-weight: 500; }
+  .live-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 8px var(--aurora); animation: pulse 1.6s infinite; }
+  .ask-tag { display: inline-flex; align-items: center; gap: 6px; color: var(--brass); font-size: 12px; font-weight: 600; }
+  .ask-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 8px var(--brass); animation: pulse 1s infinite; }
+  .card-body { flex: 1; min-height: 0; padding: 4px 18px 0; position: relative; }
+  .summary { height: 100%; display: flex; flex-direction: column; gap: 10px; }
+  .prompt { color: var(--text-2); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .curve { height: 46px; flex: none; }
+  .curve svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .figures { display: flex; gap: 18px; margin-top: auto; padding-bottom: 12px; }
+  .fig b { display: block; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--parchment); line-height: 1.2; }
+  .fig span { font-size: 11px; color: var(--dim); }
+  .preview { display: none; position: absolute; inset: 0 0 0 0; padding: 4px 18px 14px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+  .z-near .summary { display: none; }
+  .z-near .preview { display: block; }
+  .z-near .card-title { -webkit-line-clamp: 1; font-size: 21px; }
+  .card .msg .clip { display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-foot { display: flex; align-items: center; gap: 10px; padding: 9px 18px 11px; font-size: 11.5px; color: var(--faint);
+    border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent); }
+  .card-foot code { font-family: var(--mono); font-size: 11px; }
+  .card-foot button[data-open] { margin-left: auto; }
+  .card-foot button[data-log] { color: var(--parchment); border-color: color-mix(in srgb, var(--brass) 55%, var(--rule)); }
+  .card-foot button { background: none; border: 1px solid var(--rule); border-radius: 6px; padding: 3px 10px; color: var(--text-2); cursor: pointer; }
+  .card-foot button:hover { border-color: var(--brass); color: var(--parchment); }
+  .zoom { position: fixed; z-index: 10; left: 18px; bottom: 18px; display: flex; align-items: center; background: rgba(18, 30, 64, .85); border: 1px solid var(--rule);
+    border-radius: 8px; overflow: hidden; backdrop-filter: blur(6px); }
+  .zoom button { background: none; border: 0; padding: 7px 12px; cursor: pointer; color: var(--text-2); }
+  .zoom button:hover { background: var(--panel-2); color: var(--parchment); }
+  .zoom output { min-width: 50px; text-align: center; font-variant-numeric: tabular-nums; color: var(--dim); font-size: 12px; }
+  #chart { position: fixed; z-index: 10; right: 18px; bottom: 18px; width: 168px; height: 168px; border-radius: 50%; cursor: crosshair;
+    background: radial-gradient(circle, rgba(24,39,82,.92), rgba(12,22,49,.92)); border: 1px solid var(--rule); }
+  .tour { position: fixed; z-index: 10; left: 50%; bottom: 22px; transform: translateX(-50%); text-align: center; pointer-events: none;
+    background: rgba(7, 13, 34, .82); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 18px; backdrop-filter: blur(6px); }
+  .tour strong { display: block; font: italic 600 20px/1.2 var(--serif); }
+  .tour span { font-size: 12px; color: var(--dim); }
+  .hint { position: fixed; z-index: 10; left: 50%; bottom: 22px; transform: translateX(-50%); color: var(--faint); font-size: 12px; white-space: nowrap; pointer-events: none; }
+  #tip { position: fixed; z-index: 15; pointer-events: none; max-width: 280px; background: rgba(7, 13, 34, .94);
+    border: 1px solid var(--rule); border-radius: 8px; padding: 9px 12px; transform: translate(14px, 14px); display: none; }
+  #tip strong { display: block; font: 600 18px/1.15 var(--serif); }
+  #tip .meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  #tip .meta .on { color: var(--aurora); }
+  #tip p { margin: 6px 0 0; font-size: 12px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .empty { position: fixed; inset: var(--top) 0 0 0; display: grid; place-items: center; color: var(--dim); text-align: center; padding: 16px; z-index: 5; }
+  .empty strong { display: block; font: italic 600 28px var(--serif); color: var(--parchment); }
+
+  @media (max-width: 900px) {
+    .top { gap: 6px; padding: 0 10px; overflow-x: auto; scrollbar-width: none; }
+    .top::-webkit-scrollbar { display: none; }
+    .top > * { flex: none; }
+    .spacer { flex: 1 0 8px; }
+    .top h1 { font-size: 18px; }
+    .counts .count span { display: none; }
+    .btn kbd { display: none; }
+    body.mode-cockpit #cockpit { grid-template-columns: 1fr; }
+    body.mode-cockpit #center { display: none; }
+    body.mode-cockpit #center.showing-log { display: block; }
+    body.mode-cockpit #center.showing-log ~ #side, body.mode-cockpit.pane-open #side { display: none; }
+    .feed { display: none; }
+    body.mode-map #side { left: 12px; right: 12px; width: auto; }
+    .hint { display: none; }
+    #chart { width: 110px; height: 110px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-tag::before, .ask-tag::before, .badge::before, .item .dot, .card.flare, .ping { animation: none; }
+    #log { transition: none; }
+  }
+</style>
+</head>
+<body class="mode-cockpit">
+
+<header class="top">
+  <h1>Session Canvas</h1>
+  <nav class="modes" role="tablist" aria-label="Ansicht">
+    <button class="tab" id="mCockpit" role="tab" aria-selected="true">Cockpit</button>
+    <button class="tab" id="mMap" role="tab" aria-selected="false">Karte</button>
+  </nav>
+  <div class="counts" id="counts"></div>
+  <span class="spacer"></span>
+  <button class="btn" id="bFind">Suchen<kbd>Strg K</kbd></button>
+  <button class="btn" id="bNew">Neue Session<kbd>N</kbd></button>
+  <button class="btn map-only" id="bList" aria-pressed="false">Liste<kbd>L</kbd></button>
+  <button class="btn map-only" id="bTour" aria-pressed="false">Rundflug<kbd>Leertaste</kbd></button>
+  <button class="btn" id="bNotify" aria-pressed="false" title="Desktop-Benachrichtigung, sobald eine Session dich braucht">Benachrichtigen</button>
+  <button class="btn" id="bSound" aria-pressed="false" title="Kurzer Ton, sobald eine Session dich braucht">Ton</button>
+</header>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+<div id="stage" aria-label="Sternkarte deiner Sessions"><div id="world"></div></div>
+
+<div id="cockpit">
+  <aside id="side" aria-label="Liste aller Sessions">
+    <div class="side-head">
+      <input id="sText" type="search" placeholder="Filtern nach Titel, Projekt, Prompt" aria-label="Liste filtern" autocomplete="off">
+      <div class="chips" id="sStatus" role="group" aria-label="Status">
+        <button class="chip" data-status="all" aria-pressed="true">Alle</button>
+        <button class="chip" data-status="needs" aria-pressed="false">Braucht dich</button>
+        <button class="chip" data-status="working" aria-pressed="false">Arbeitet</button>
+        <button class="chip" data-status="done" aria-pressed="false">Fertig</button>
+        <button class="chip" data-status="connected" aria-pressed="false">Von hier gesteuert</button>
+      </div>
+      <div class="pair">
+        <select id="sSince" aria-label="Zeitraum">
+          <option value="all">Jederzeit</option><option value="day">24 Stunden</option><option value="week">7 Tage</option><option value="month">30 Tage</option>
+        </select>
+        <select id="sOrigin" aria-label="Entstanden in">
+          <option value="all">Überall</option><option value="app">Claude-App</option><option value="vscode">VS Code</option><option value="terminal">Terminal</option>
+        </select>
+        <select id="sSort" aria-label="Gruppierung">
+          <option value="state">Nach Status</option><option value="project">Projekte</option><option value="recent">Neueste</option><option value="prompts">Prompts</option><option value="tokens">Tokens</option>
+        </select>
+      </div>
+    </div>
+    <div class="side-list" id="sList"></div>
+    <div class="side-foot"><span id="sCount"></span><button class="btn" id="sNew">Neue Session</button></div>
+  </aside>
+
+  <main id="center">
+    <section id="overview" aria-label="Übersicht aller Sessions"></section>
+
+    <aside id="log" aria-hidden="true">
+      <header>
+        <button class="close" id="logClose" title="Zur Übersicht (Esc)">Übersicht</button>
+        <div class="card-kicker" id="logKicker"></div>
+        <h2 id="logTitle"></h2>
+        <div class="path" id="logPath"></div>
+        <div class="pstate" id="paneState"></div>
+        <div id="paneReplies" hidden></div>
+        <details id="panePlan" hidden><summary></summary><ol></ol></details>
+        <div class="actions">
+          <button class="btn primary" id="logOpen">Öffnen</button>
+          <button class="btn" id="logTerm" hidden>Im Terminal öffnen</button>
+          <button class="btn" id="logZoom">Auf der Karte</button>
+          <button class="btn" id="logCopy">Befehl kopieren</button>
+        </div>
+        <details id="logMore">
+          <summary id="logMoreSum">Notiz und Details</summary>
+          <textarea id="noteInput" rows="2" placeholder="Notiz für dich: worum geht es hier, was ist der nächste Schritt?" aria-label="Notiz zu dieser Session"></textarea>
+          <div class="facts" id="logFacts"></div>
+          <details id="logFiles" hidden><summary></summary><div class="flist"></div></details>
+        </details>
+      </header>
+      <div class="stream" id="logStream"></div>
+      <div class="console">
+        <div id="perms"></div>
+        <div id="notice"></div>
+        <form id="composer" autocomplete="off">
+          <textarea id="cInput" rows="2" placeholder="Nachricht an diese Session" aria-label="Nachricht an diese Session"></textarea>
+          <div class="crow">
+            <select id="cMode" aria-label="Was Claude ohne Nachfrage darf">
+              <option value="manual">Bei allem fragen</option>
+              <option value="acceptEdits">Dateiänderungen erlauben</option>
+              <option value="plan">Nur planen</option>
+            </select>
+            <span class="state" id="cState"></span>
+            <button type="button" class="btn" id="cStop" hidden>Stoppen</button>
+            <button type="button" class="btn" id="cRelease" hidden title="Den Claude-Prozess dieser Session beenden">Trennen</button>
+            <button type="submit" class="btn primary" id="cSend">Senden</button>
+          </div>
+        </form>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="modal" id="newDlg" role="dialog" aria-label="Neue Session starten">
+  <form class="modal-box" id="newForm" autocomplete="off">
+    <h2>Neue Session</h2>
+    <label>Projektordner
+      <select id="nProj"></select>
+    </label>
+    <input id="nPath" placeholder="Pfad zum Ordner, z. B. D:\entwicklung vsc\mein-projekt" hidden aria-label="Pfad zum Ordner">
+    <label>Was soll Claude tun?
+      <textarea id="nText" placeholder="Zum Beispiel: Schau dir das Projekt an und schlag drei Verbesserungen vor."></textarea>
+    </label>
+    <div class="crow">
+      <select id="nMode" aria-label="Was Claude ohne Nachfrage darf">
+        <option value="manual">Bei allem fragen</option>
+        <option value="acceptEdits">Dateiänderungen erlauben</option>
+        <option value="plan">Nur planen</option>
+      </select>
+      <span class="state" id="nState"></span>
+      <button type="button" class="btn" id="nCancel">Abbrechen</button>
+      <button type="submit" class="btn primary" id="nGo">Starten</button>
+    </div>
+  </form>
+</div>
+<div class="feed" id="feed" aria-live="polite"></div>
+
+<div class="zoom">
+  <button id="zOut" title="Rauszoomen (−)" aria-label="Rauszoomen">−</button>
+  <output id="zVal">100%</output>
+  <button id="zIn" title="Reinzoomen (+)" aria-label="Reinzoomen">+</button>
+  <button id="zAll" title="Ganze Karte (0)">Ganze Karte</button>
+</div>
+<canvas id="chart" title="Übersichtskarte – klicken zum Hinspringen"></canvas>
+<div class="hint" id="hint">Scrollen zoomt, Ziehen verschiebt, Klick auf einen Stern fliegt hin</div>
+<div class="tour" id="tour" hidden><strong id="tourTitle"></strong><span id="tourInfo"></span></div>
+<div id="tip"></div>
+
+<div id="finder" role="dialog" aria-label="Session suchen">
+  <div class="finder-box">
+    <input id="fInput" type="search" placeholder="Session, Projekt oder Wortlaut suchen" autocomplete="off" aria-label="Suchbegriff">
+    <ul id="fList" role="listbox"></ul>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Konstanten ----------
+  const CARD_W = 380, CARD_H = 300, CELL_W = 450, CELL_H = 370, CLUSTER_GAP = 220;
+  const MIN_K = 0.03, MAX_K = 3;
+  const CARD_IN = [0.40, 0.58];   // Zoombereich, in dem Sterne zu Karten werden
+  const NEAR = 0.95;              // ab hier zeigen Karten den Verlauf
+  const PALETTE = ["#7fb7e8", "#e39a7b", "#b49ae8", "#7fd1b9", "#e8c77f", "#e88fb2", "#a6cf86", "#8fa3f0", "#e8a2d8", "#6fc6e0"];
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const STATES = {
+    needs_you: { label: "Braucht dich", cls: "ask", order: 0 },
+    stalled: { label: "Hängt", cls: "warn", order: 1 },
+    done: { label: "Fertig, ungelesen", cls: "done", order: 2 },
+    working: { label: "Arbeitet", cls: "on", order: 3 },
+    idle: { label: "Ruht", cls: "idle", order: 4 },
+  };
+
+  const $ = id => document.getElementById(id);
+  const sky = $("sky"), ctx = sky.getContext("2d");
+  const stage = $("stage"), world = $("world"), chart = $("chart");
+
+  // ---------- Zustand ----------
+  let sessions = [], byId = new Map();
+  let nodes = new Map();      // id -> { s, x, y, cx, cy, c, el, cluster, flareAt, born }
+  let clusters = [];          // { key, name, path, c, cx, cy, r, top, ids }
+  let clusterOrder = [];
+  let bounds = { x: 0, y: 0, w: 1, h: 1, r: 1 };
+  const view = { x: innerWidth / 2, y: innerHeight / 2, k: 0.2 };
+  let selectedId = null, hoverId = null, firstLoad = true, layoutKey = "";
+  let introStart = 0;
+  let serverSkew = 0;
+  const TOKEN = "__CANVAS_TOKEN__"; // setzt der Server beim Ausliefern ein
+  const runs = new Map();     // sid -> Zustand des von hier gesteuerten Claude-Prozesses
+  const partials = new Map(); // sid -> Text, den Claude gerade schreibt
+  const prevKinds = new Map(); // sid -> letzter bekannter Zustand (für Benachrichtigungen)
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  const notes = store.get("sc-notes", {});
+  const prefs = store.get("sc-prefs", { notify: false, sound: false });
+  const isCockpit = () => document.body.classList.contains("mode-cockpit");
+
+  async function post(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Canvas-Token": TOKEN }, body: JSON.stringify(body || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Fehler ${r.status}`);
+    return j;
+  }
+  const isBusy = r => !!r && (r.status === "working" || r.status === "starting");
+  const isAsking = r => !!r && !!r.pending && r.pending.length > 0;
+  // Läuft die Session gerade woanders (Claude-App, Terminal)? Dann könnten zwei Programme gleichzeitig schreiben.
+  const elsewhere = s => !runs.has(s.id) && !s.ours && s.updatedMs && now() - s.updatedMs < 3 * 60 * 1000;
+  const OPEN_LABEL = { app: "In Claude öffnen", vscode: "In VS Code öffnen", terminal: "Im Terminal öffnen" };
+  const OPENED = { app: "öffnet sich in der Claude-App", vscode: "öffnet sich in VS Code", terminal: "öffnet sich in einem neuen Terminal" };
+  const FROM = { app: "Claude-App", vscode: "VS Code", terminal: "Terminal" };
+  function openHint(s) {
+    const o = s.opener;
+    if (o.archived) return "In der Claude-App archiviert, darum im Terminal mit claude --resume";
+    if (o.kind === "terminal") return `Neues Terminal im Projektordner mit claude --resume`;
+    return `Dort öffnen, wo die Session entstanden ist (${FROM[o.from]})`;
+  }
+  async function openElsewhere(id, target) {
+    const s = byId.get(id);
+    try {
+      const r = await post(`/api/sessions/${encodeURIComponent(id)}/open`, { target });
+      if (logId === id) { consoleError = ""; flashState(`Session ${OPENED[r.opened]}.`); }
+      else pushFeed(id, s ? s.title : id, `Session ${OPENED[r.opened]}.`, () => goTo(id));
+    } catch (err) {
+      if (logId === id) { consoleError = err.message; renderConsole(); }
+      else pushFeed(id, s ? s.title : id, `Öffnen ging nicht: ${err.message}`, () => openLog(id));
+    }
+  }
+
+  // Zustand einer Session: der Server kennt Verlauf und App, hier kommt der Live-Prozess dazu
+  function stateFor(s) {
+    const r = runs.get(s.id);
+    if (isAsking(r)) {
+      const p = r.pending[0];
+      return { kind: "needs_you", detail: p.tool === "AskUserQuestion" ? "Claude stellt dir eine Frage" : `Wartet auf deine Erlaubnis für ${p.display || p.tool}`,
+        since: p.at, unread: false, actions: [], ours: true, pending: p };
+    }
+    if (isBusy(r)) return { kind: "working", detail: r.note || "Arbeitet …", since: null, unread: false, actions: [] };
+    return s.state || { kind: "idle", detail: "", unread: false, actions: [] };
+  }
+  function runTag(s) {
+    const st = stateFor(s), d = STATES[st.kind];
+    if (st.kind === "idle") return "";
+    return `<span class="${st.kind === "needs_you" ? "ask-tag" : "live-tag"}">${d.label}</span>`;
+  }
+
+  // ---------- Hilfen ----------
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  function hash(str) { let h = 2166136261; for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h; }
+  const rand = seed => () => ((seed = Math.imul(seed ^ (seed >>> 15), 2246822507) + 0x9e3779b9 >>> 0) / 4294967296);
+  const now = () => Date.now() + serverSkew;
+  function ago(t) {
+    if (!t) return "–";
+    const s = (now() - new Date(t)) / 1000;
+    if (s < 45) return "gerade eben";
+    if (s < 3600) return `vor ${Math.max(1, Math.round(s / 60))} Min.`;
+    if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
+    if (s < 86400 * 2) return "gestern";
+    if (s < 86400 * 30) return `vor ${Math.round(s / 86400)} Tagen`;
+    return new Date(t).toLocaleDateString("de-DE", { day: "numeric", month: "short" });
+  }
+  function since(t) {
+    const s = (now() - new Date(t)) / 1000;
+    if (s < 60) return "seit Sekunden";
+    if (s < 3600) return `seit ${Math.round(s / 60)} Min.`;
+    if (s < 86400) return `seit ${Math.round(s / 3600)} Std.`;
+    return `seit ${Math.round(s / 86400)} Tagen`;
+  }
+  const fmtTime = iso => iso ? new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  const fmtNum = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace(".", ",") + " Mio." : n >= 1e4 ? Math.round(n / 1000) + " Tsd." : n.toLocaleString("de-DE");
+  const groupKey = s => s.scratch ? "~scratch" : s.cwd.toLowerCase();
+  const groupName = s => s.scratch ? "Ohne Ordner" : s.project;
+  const colorOf = key => PALETTE[hash(key) % PALETTE.length];
+  function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+  const planInfo = p => !p || !p.length ? null : { done: p.filter(x => x.st === "completed").length, total: p.length, cur: p.find(x => x.st === "in_progress") };
+
+  // Kleiner Markdown-Leser für Verläufe: Codeblöcke, Inline-Code, Fett, Überschriften, Listen
+  function md(text) {
+    const parts = String(text).split(/```[^\n]*\n?/);
+    return parts.map((p, i) => {
+      if (i % 2) return `<pre>${esc(p.replace(/\n$/, ""))}</pre>`;
+      const lines = esc(p).split("\n");
+      let html = "", list = false;
+      for (let l of lines) {
+        l = l.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+        const li = l.match(/^\s*(?:[-*]|\d+\.)\s+(.*)/);
+        if (li) { if (!list) { html += "<ul>"; list = true; } html += `<li>${li[1]}</li>`; continue; }
+        if (list) { html += "</ul>"; list = false; }
+        const h = l.match(/^#{1,4}\s+(.*)/);
+        if (h) html += `<h4>${h[1]}</h4>`;
+        else if (l.trim()) html += `<p>${l}</p>`;
+      }
+      return html + (list ? "</ul>" : "");
+    }).join("");
+  }
+
+  // ---------- Ansicht: Cockpit oder Karte ----------
+  function setMode(mode) {
+    document.body.classList.toggle("mode-cockpit", mode === "cockpit");
+    document.body.classList.toggle("mode-map", mode !== "cockpit");
+    $("mCockpit").setAttribute("aria-selected", mode === "cockpit");
+    $("mMap").setAttribute("aria-selected", mode !== "cockpit");
+    store.set("sc-mode", mode);
+    if (mode !== "cockpit") { stopTour(); resize(); if (!firstLoad) showAll(); }
+    else stopTour();
+    renderList(); renderOverview(); dirty = true;
+  }
+  $("mCockpit").onclick = () => setMode("cockpit");
+  $("mMap").onclick = () => setMode("map");
+  // Eine Session zeigen: im Cockpit öffnen, auf der Karte hinfliegen
+  function goTo(id, focus) {
+    if (isCockpit()) openLog(id, focus);
+    else { flyToCard(id, 1.25); if (focus) openLog(id, focus); }
+  }
+
+  // ---------- Layout: Projekte als Sternbilder ----------
+  function layoutCluster(items, key) {
+    const sorted = [...items].sort((a, b) => (a.start || a.end).localeCompare(b.start || b.end));
+    const n = sorted.length, cols = Math.max(1, Math.ceil(Math.sqrt(n * 1.4)));
+    const rows = Math.ceil(n / cols);
+    const pos = sorted.map((s, i) => {
+      const r = rand(hash(s.id)), row = Math.floor(i / cols), col = i % cols;
+      return {
+        id: s.id,
+        x: col * CELL_W + (row % 2 ? CELL_W / 2 : 0) + (r() - .5) * 50 - ((cols - 1) * CELL_W + (rows > 1 ? CELL_W / 2 : 0)) / 2 - CARD_W / 2,
+        y: row * CELL_H + (r() - .5) * 40 - ((rows - 1) * CELL_H) / 2 - CARD_H / 2,
+      };
+    });
+    let rad = 0, top = Infinity;
+    for (const p of pos) {
+      for (const [dx, dy] of [[0, 0], [CARD_W, 0], [0, CARD_H], [CARD_W, CARD_H]]) rad = Math.max(rad, Math.hypot(p.x + dx, p.y + dy));
+      top = Math.min(top, p.y);
+    }
+    return { pos, r: rad + 70, top };
+  }
+
+  function computeLayout(list) {
+    const groups = new Map();
+    for (const s of list) {
+      const k = groupKey(s);
+      if (!groups.has(k)) groups.set(k, { key: k, name: groupName(s), path: s.scratch ? "Sessions ohne Projektordner" : s.cwd, items: [] });
+      groups.get(k).items.push(s);
+    }
+    const fresh = [...groups.keys()].filter(k => !clusterOrder.includes(k))
+      .sort((a, b) => (groups.get(b).items[0].end || "").localeCompare(groups.get(a).items[0].end || ""));
+    clusterOrder = [...clusterOrder.filter(k => groups.has(k)), ...fresh];
+
+    const placed = [];
+    nodes.forEach(n => n.keep = false);
+    for (const key of clusterOrder) {
+      const g = groups.get(key), inner = layoutCluster(g.items, key);
+      let cx = 0, cy = 0;
+      if (placed.length) {
+        for (let t = 0; t < 4000; t++) {
+          const a = t * 0.31 + hash(key) % 7, d = 60 + t * 16;
+          cx = Math.cos(a) * d; cy = Math.sin(a) * d * 0.78;
+          if (placed.every(p => Math.hypot(p.cx - cx, p.cy - cy) >= p.r + inner.r + CLUSTER_GAP)) break;
+        }
+      }
+      const c = colorOf(key);
+      const cl = { key, name: g.name, path: g.path, c, cx, cy, r: inner.r, top: cy + inner.top, ids: inner.pos.map(p => p.id) };
+      placed.push(cl);
+      for (const p of inner.pos) {
+        const s = byId.get(p.id);
+        const n = nodes.get(p.id) || { flareAt: 0, born: 0 };
+        Object.assign(n, { s, x: cx + p.x, y: cy + p.y, cx: cx + p.x + CARD_W / 2, cy: cy + p.y + CARD_H / 2, c, cluster: cl, keep: true });
+        nodes.set(p.id, n);
+      }
+    }
+    for (const [id, n] of nodes) if (!n.keep) { n.el?.remove(); nodes.delete(id); }
+    clusters = placed;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, r = 0;
+    for (const c of clusters) {
+      x0 = Math.min(x0, c.cx - c.r); y0 = Math.min(y0, c.cy - c.r); x1 = Math.max(x1, c.cx + c.r); y1 = Math.max(y1, c.cy + c.r);
+      r = Math.max(r, Math.hypot(c.cx, c.cy) + c.r);
+    }
+    bounds = clusters.length ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0, r } : { x: -500, y: -500, w: 1000, h: 1000, r: 700 };
+  }
+
+  // ---------- Karten auf der Sternkarte ----------
+  function curveSvg(curve, c) {
+    const max = Math.max(1, ...curve), n = curve.length, W = 344, H = 46;
+    const pts = curve.map((v, i) => [(i / (n - 1)) * W, H - 3 - (v / max) * (H - 8)]);
+    const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const gid = "g" + Math.random().toString(36).slice(2, 8);
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Aktivität über die Dauer der Session">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".45"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
+      <line x1="0" y1="${H - 2}" x2="${W}" y2="${H - 2}" stroke="#263766" stroke-width="1"/>
+      <path d="${line} L${W} ${H - 2} L0 ${H - 2} Z" fill="url(#${gid})"/>
+      <path d="${line}" fill="none" stroke="${c}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  function cardHtml(s, c) {
+    const preview = s.preview.map(m => m.r === "tools"
+      ? `<div class="msg tools">${m.tools.slice(-4).map(t => `<i>${esc(t.name)}</i> ${esc(t.hint.slice(0, 60))}`).join("<br>")}</div>`
+      : m.r === "note" ? `<div class="msg tools">${esc(m.t)}</div>`
+      : `<div class="msg ${m.r}"><div class="clip">${md(m.t)}</div></div>`).join("");
+    const third = s.cost != null ? [`$${s.cost.toFixed(2)}`, "Kosten"] : [fmtNum(s.outTokens), "Tokens erzeugt"];
+    return `
+      <div class="card-head">
+        <div class="card-kicker"><span class="dot"></span><span class="proj">${esc(groupName(s))}</span>
+          ${runTag(s)}<span class="when">${ago(s.end)}</span></div>
+        <div class="card-title">${esc(s.title)}</div>
+      </div>
+      <div class="card-body">
+        <div class="summary">
+          ${s.lastPrompt || s.firstPrompt ? `<div class="prompt">${esc(s.lastPrompt || s.firstPrompt)}</div>` : ""}
+          <div class="curve">${curveSvg(s.curve, c)}</div>
+          <div class="figures">
+            <div class="fig"><b>${s.userMsgs}</b><span>Prompts</span></div>
+            <div class="fig"><b>${fmtNum(s.toolCalls)}</b><span>Tool-Aufrufe</span></div>
+            <div class="fig"><b>${third[0]}</b><span>${third[1]}</span></div>
+          </div>
+        </div>
+        <div class="preview">${preview}</div>
+      </div>
+      <div class="card-foot">
+        <code>${esc(s.id.slice(0, 8))}</code>
+        <button data-open title="${esc(openHint(s))}">${OPEN_LABEL[s.opener.kind]}</button>
+        <button data-log>Weiterarbeiten</button>
+      </div>`;
+  }
+
+  function renderCards() {
+    if (isCockpit()) return; // die Karte ist nicht zu sehen
+    for (const [id, n] of nodes) {
+      const s = n.s;
+      if (!n.el) {
+        n.el = document.createElement("div");
+        n.el.className = "card";
+        n.el.dataset.id = id;
+        world.appendChild(n.el);
+      }
+      const r = runs.get(id);
+      const sig = [s.end, s.sizeKB, s.active, ago(s.end), n.c, stateFor(s).kind, r ? r.status + (r.pending || []).length : ""].join("|");
+      if (sig !== n.sig) {
+        const pv = n.el.querySelector(".preview");
+        const stick = !pv || pv.scrollTop + pv.clientHeight >= pv.scrollHeight - 24;
+        const top = pv ? pv.scrollTop : 0;
+        n.el.innerHTML = cardHtml(s, n.c);
+        const np = n.el.querySelector(".preview");
+        requestAnimationFrame(() => { np.scrollTop = stick ? np.scrollHeight : top; });
+        n.sig = sig;
+      }
+      n.el.style.cssText = `left:${n.x}px;top:${n.y}px;--c:${n.c}`;
+      n.el.classList.toggle("live", s.active || isBusy(r));
+      n.el.classList.toggle("asking", isAsking(r));
+      n.el.classList.toggle("selected", id === selectedId);
+      n.el.classList.toggle("dim", !matches(s));
+    }
+  }
+
+  // Ein Filter für alles: Liste, Übersicht, Karte, Rundflug
+  const filt = { text: "", status: "all", origin: "all", since: "all", sort: "state" };
+  const SINCE_MS = { day: 864e5, week: 7 * 864e5, month: 30 * 864e5 };
+  const filtering = () => filt.text || filt.status !== "all" || filt.origin !== "all" || filt.since !== "all";
+  function matches(s) {
+    const k = stateFor(s).kind;
+    if (filt.status === "needs" && k !== "needs_you" && k !== "stalled") return false;
+    if (filt.status === "working" && k !== "working") return false;
+    if (filt.status === "done" && k !== "done") return false;
+    if (filt.status === "connected" && !runs.has(s.id)) return false;
+    if (filt.origin !== "all" && s.opener.from !== filt.origin) return false;
+    if (filt.since !== "all" && now() - new Date(s.end) > SINCE_MS[filt.since]) return false;
+    if (filt.text) {
+      const hay = `${s.title} ${groupName(s)} ${s.lastPrompt || ""} ${s.firstPrompt || ""} ${s.branch || ""} ${notes[s.id] || ""}`.toLowerCase();
+      if (!filt.text.split(/\s+/).every(w => hay.includes(w))) return false;
+    }
+    return true;
+  }
+
+  function counts() {
+    const c = { needs: 0, stalled: 0, working: 0, done: 0 };
+    for (const s of sessions) {
+      const k = stateFor(s).kind;
+      if (k === "needs_you") c.needs++; else if (k === "stalled") c.stalled++; else if (k === "working") c.working++; else if (k === "done") c.done++;
+    }
+    return c;
+  }
+  function renderCounts() {
+    const c = counts();
+    const btn = (st, cls, n, label) => `<button class="count ${cls}${n ? "" : " zero"}" data-status="${st}" aria-pressed="${filt.status === st}"><b>${n}</b><span>${label}</span></button>`;
+    $("counts").innerHTML = btn("needs", "ask", c.needs + c.stalled, c.needs + c.stalled === 1 ? "braucht dich" : "brauchen dich")
+      + btn("working", "on", c.working, c.working === 1 ? "arbeitet" : "arbeiten")
+      + btn("done", "done", c.done, "fertig, ungelesen");
+    document.title = c.needs + c.stalled ? `(${c.needs + c.stalled}) Session Canvas` : "Session Canvas";
+  }
+  $("counts").addEventListener("click", e => {
+    const b = e.target.closest("[data-status]");
+    if (!b) return;
+    setStatus(filt.status === b.dataset.status ? "all" : b.dataset.status);
+  });
+
+  // ---------- Kamera ----------
+  let dirty = true;
+  function setView(x, y, k) { view.x = x; view.y = y; view.k = clamp(k, MIN_K, MAX_K); dirty = true; }
+  function zoomAt(px, py, f) {
+    const k = clamp(view.k * f, MIN_K, MAX_K);
+    setView(px - (px - view.x) * (k / view.k), py - (py - view.y) * (k / view.k), k);
+  }
+  const toWorld = (sx, sy) => [(sx - view.x) / view.k, (sy - view.y) / view.k];
+
+  // Flug nach van Wijk & Nuij: erst raus, dann rüber, dann rein
+  let flight = null;
+  function flyTo(target, opts = {}) {
+    stopMotion();
+    const vw = innerWidth, vh = innerHeight;
+    const p0 = [(vw / 2 - view.x) / view.k, (vh / 2 - view.y) / view.k, vw / view.k];
+    const p1 = [(vw / 2 - target.x) / target.k, (vh / 2 - target.y) / target.k, vw / target.k];
+    const interp = zoomPath(p0, p1);
+    const dur = reduced ? 0 : clamp(interp.duration * (opts.speed || 1), 450, 2600);
+    flight = { interp, t0: performance.now(), dur, done: opts.done };
+    dirty = true;
+  }
+  function zoomPath(p0, p1) {
+    const rho = Math.SQRT2, rho2 = 2, rho4 = 4;
+    const [ux0, uy0, w0] = p0, [ux1, uy1, w1] = p1, dx = ux1 - ux0, dy = uy1 - uy0, d2 = dx * dx + dy * dy;
+    let f, S;
+    if (d2 < 1e-12) {
+      S = Math.log(w1 / w0) / rho;
+      f = t => [ux0 + t * dx, uy0 + t * dy, w0 * Math.exp(rho * t * S)];
+    } else {
+      const d1 = Math.sqrt(d2);
+      const b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1);
+      const b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1);
+      const r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0), r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+      S = (r1 - r0) / rho;
+      f = t => {
+        const s = t * S, c0 = Math.cosh(r0);
+        const u = w0 / (rho2 * d1) * (c0 * Math.tanh(rho * s + r0) - Math.sinh(r0));
+        return [ux0 + u * dx, uy0 + u * dy, w0 * c0 / Math.cosh(rho * s + r0)];
+      };
+    }
+    f.duration = Math.abs(S) * 1000;
+    return f;
+  }
+  const TOP_PAD = 70;
+  function freeArea() {
+    let left = 0, right = 0;
+    if (document.body.classList.contains("side-open") && innerWidth > 900) left = $("side").getBoundingClientRect().right;
+    if ($("log").classList.contains("open")) right = Math.min(600, innerWidth);
+    if (innerWidth - left - right < 320) { left = 0; right = 0; }
+    return { left, w: innerWidth - left - right };
+  }
+  function fitBox(x, y, w, h, margin, maxK) {
+    const { left, w: vw } = freeArea(), vh = innerHeight - TOP_PAD;
+    const k = clamp(Math.min((vw - margin * 2) / w, (vh - margin * 2) / h), MIN_K, maxK);
+    return { k, x: left + vw / 2 - (x + w / 2) * k, y: TOP_PAD + vh / 2 - (y + h / 2) * k };
+  }
+  const allView = () => fitBox(bounds.x, bounds.y - 80, bounds.w, bounds.h + 80, 40, 0.6);
+  const showAll = () => flyTo(allView());
+  function cardView(id, k) {
+    const n = nodes.get(id);
+    return n ? fitBox(n.x, n.y, CARD_W, CARD_H, 50, k || 1.6) : null;
+  }
+  function flyToCard(id, k, opts) { const v = cardView(id, k); if (v) { select(id); flyTo(v, opts); } }
+
+  let velocity = null, wheelGoal = null;
+  function stopMotion() { flight = null; velocity = null; wheelGoal = null; }
+
+  // ---------- Himmel zeichnen ----------
+  const stars = [];
+  { const r = rand(7); for (let i = 0; i < 420; i++) stars.push({ x: r(), y: r(), s: r() * r() * 1.6 + .3, p: r() * 6.28, d: r() * .5 + .2 }); }
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(2, devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    sky.width = W * dpr; sky.height = H * dpr;
+    dirty = true;
+  }
+
+  function starRadius(s) { return clamp(2.2 + Math.sqrt(s.userMsgs) * 1.1, 2.5, 11); }
+  function recencyGlow(s) {
+    const h = (now() - new Date(s.end)) / 36e5;
+    return clamp(1 - Math.log10(1 + h) / 3.4, 0.18, 1);
+  }
+
+  function drawSky(t) {
+    const g = ctx;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const bg = g.createRadialGradient(W * .5, H * .45, 0, W * .5, H * .5, Math.max(W, H) * .8);
+    bg.addColorStop(0, "#111f45"); bg.addColorStop(.6, "#0b1634"); bg.addColorStop(1, "#060c20");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+    for (const st of stars) {
+      const x = ((st.x * W + view.x * st.d * 0.08) % W + W) % W;
+      const y = ((st.y * H + view.y * st.d * 0.08) % H + H) % H;
+      const tw = reduced ? .7 : .55 + .45 * Math.sin(t / 900 * st.d + st.p);
+      g.fillStyle = `rgba(239,230,207,${.35 * tw * st.d * 1.6})`;
+      g.fillRect(x, y, st.s, st.s);
+    }
+
+    const k = view.k, sx = x => x * k + view.x, sy = y => y * k + view.y;
+    const starA = 1 - smooth(CARD_IN[0] - .04, CARD_IN[1] - .06, k);
+
+    const ox = sx(0), oy = sy(0);
+    let step = 300; while (step * k < 130) step *= 2; while (step * k > 260) step /= 2;
+    const far = Math.max(Math.hypot(ox, oy), Math.hypot(W - ox, oy), Math.hypot(ox, H - oy), Math.hypot(W - ox, H - oy));
+    g.lineWidth = 1;
+    g.strokeStyle = "rgba(201,168,106,.075)";
+    const rings = Math.min(60, Math.ceil(far / (step * k)));
+    for (let i = 1; i <= rings; i++) { g.beginPath(); g.arc(ox, oy, i * step * k, 0, Math.PI * 2); g.stroke(); }
+    g.strokeStyle = "rgba(201,168,106,.05)";
+    for (let a = 0; a < 24; a++) {
+      const ang = a * Math.PI / 12, c = Math.cos(ang), s = Math.sin(ang);
+      g.beginPath(); g.moveTo(ox + c * step * k, oy + s * step * k); g.lineTo(ox + c * far, oy + s * far); g.stroke();
+    }
+
+    for (const c of clusters) {
+      const x = sx(c.cx), y = sy(c.cy), r = c.r * k * 1.25;
+      if (x + r < 0 || x - r > W || y + r < 0 || y - r > H) continue;
+      const neb = g.createRadialGradient(x, y, 0, x, y, r);
+      neb.addColorStop(0, rgba(c.c, .16)); neb.addColorStop(.55, rgba(c.c, .06)); neb.addColorStop(1, rgba(c.c, 0));
+      g.fillStyle = neb; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+
+    const intro = reduced ? 1 : clamp((t - introStart) / 2400, 0, 1);
+
+    for (const c of clusters) {
+      const ids = c.ids.filter(id => nodes.has(id));
+      if (ids.length < 2) continue;
+      g.strokeStyle = rgba(c.c, .18 + .32 * starA);
+      g.lineWidth = 1.1;
+      g.setLineDash(starA > .5 ? [] : [4, 6]);
+      g.beginPath();
+      ids.forEach((id, i) => {
+        const n = nodes.get(id);
+        if (n.born > intro) return;
+        i && nodes.get(ids[i - 1]).born <= intro ? g.lineTo(sx(n.cx), sy(n.cy)) : g.moveTo(sx(n.cx), sy(n.cy));
+      });
+      g.stroke();
+      g.setLineDash([]);
+    }
+
+    for (const n of nodes.values()) {
+      if (n.born > intro) continue;
+      const s = n.s, x = sx(n.cx), y = sy(n.cy);
+      if (x < -80 || x > W + 80 || y < -80 || y > H + 80) continue;
+      const vis = matches(s) ? 1 : .15;
+      const pop = reduced ? 1 : smooth(n.born, n.born + .08, intro);
+      const r = starRadius(s) * (0.85 + Math.min(k, .5)) * pop, glow = recencyGlow(s);
+      const a = starA * vis;
+      const st = stateFor(s);
+      if (a > .01) {
+        const halo = g.createRadialGradient(x, y, 0, x, y, r * 6);
+        halo.addColorStop(0, rgba(n.c, .55 * glow * a)); halo.addColorStop(1, rgba(n.c, 0));
+        g.fillStyle = halo; g.beginPath(); g.arc(x, y, r * 6, 0, Math.PI * 2); g.fill();
+        g.fillStyle = `rgba(250,244,228,${(.45 + .55 * glow) * a})`;
+        g.beginPath(); g.arc(x, y, r * .62, 0, Math.PI * 2); g.fill();
+        if (glow > .6) {
+          g.strokeStyle = `rgba(250,244,228,${.35 * glow * a})`; g.lineWidth = .8;
+          g.beginPath(); g.moveTo(x - r * 2.6, y); g.lineTo(x + r * 2.6, y); g.moveTo(x, y - r * 2.6); g.lineTo(x, y + r * 2.6); g.stroke();
+        }
+        if (n.s.id === selectedId || n.s.id === hoverId) {
+          g.strokeStyle = `rgba(201,168,106,${.9 * a})`; g.lineWidth = 1.3;
+          g.beginPath(); g.arc(x, y, r * 2.2 + 4, 0, Math.PI * 2); g.stroke();
+        }
+      }
+      if (st.kind === "working" && vis === 1) {
+        const base = Math.max(r * 1.6, 10);
+        const span = Math.max(base * 4, 50 * Math.max(1, k));
+        const waves = reduced ? [.35] : [0, .5].map(o => ((t / 2200) + o) % 1);
+        for (const w of waves) {
+          g.strokeStyle = `rgba(143,184,234,${(1 - w) * .55 * Math.max(starA, .35)})`;
+          g.lineWidth = 1.4;
+          g.beginPath(); g.arc(x, y, base + w * span * (starA > .5 ? 1 : 4), 0, Math.PI * 2); g.stroke();
+        }
+      }
+      if (st.kind === "needs_you" || st.kind === "stalled") {
+        const w = reduced ? .5 : (t / 1000) % 1;
+        g.strokeStyle = st.kind === "stalled" ? `rgba(240,160,160,${.9 - w * .6})` : `rgba(201,168,106,${.95 - w * .6})`; g.lineWidth = 2;
+        g.beginPath(); g.arc(x, y, Math.max(r * 2.4, 14) + w * 12, 0, Math.PI * 2); g.stroke();
+      }
+      const fa = (t - n.flareAt) / 1600;
+      if (n.flareAt && fa < 1) {
+        g.strokeStyle = rgba(n.c, (1 - fa) * .9); g.lineWidth = 2;
+        g.beginPath(); g.arc(x, y, 8 + fa * 160 * Math.max(k, .4), 0, Math.PI * 2); g.stroke();
+      }
+    }
+
+    const labelA = 1 - smooth(1.1, 1.6, k);
+    if (labelA > .01) {
+      for (const c of clusters) {
+        const x = sx(c.cx), y = sy(c.top) - (starA > .5 ? 18 : 26);
+        const size = clamp(14 + c.r * k * .06, 15, 34) * (starA > .5 ? 1 : 1.15);
+        if (x < -400 || x > W + 400 || y < -60 || y > H + 60) continue;
+        g.textAlign = "center"; g.textBaseline = "alphabetic";
+        g.font = `italic 600 ${size}px "Cormorant Garamond", Georgia, serif`;
+        g.fillStyle = rgba(c.c, .95 * labelA);
+        g.shadowColor = "rgba(5,10,28,.9)"; g.shadowBlur = 8;
+        g.fillText(c.name, x, y);
+        g.shadowBlur = 0;
+        g.font = `500 11px "Instrument Sans", system-ui, sans-serif`;
+        g.fillStyle = `rgba(142,151,181,${.85 * labelA})`;
+        g.fillText(`${c.ids.length} ${c.ids.length === 1 ? "Session" : "Sessions"}`, x, y + 15);
+      }
+    }
+  }
+
+  function drawChart() {
+    const S = chart.clientWidth;
+    if (!S) return;
+    if (chart.width !== S * dpr) { chart.width = S * dpr; chart.height = S * dpr; }
+    const g = chart.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, S, S);
+    const R = S / 2, sc = (R - 10) / Math.max(bounds.r, 1);
+    chart._sc = sc;
+    g.strokeStyle = "rgba(201,168,106,.14)";
+    for (let i = 1; i <= 3; i++) { g.beginPath(); g.arc(R, R, (R - 10) * i / 3, 0, Math.PI * 2); g.stroke(); }
+    for (const c of clusters) {
+      g.fillStyle = rgba(c.c, .22);
+      g.beginPath(); g.arc(R + c.cx * sc, R + c.cy * sc, Math.max(3, c.r * sc), 0, Math.PI * 2); g.fill();
+    }
+    for (const n of nodes.values()) {
+      const k = stateFor(n.s).kind;
+      g.fillStyle = k === "needs_you" ? "#c9a86a" : k === "working" ? "#8fb8ea" : rgba(n.c, matches(n.s) ? .95 : .25);
+      g.beginPath(); g.arc(R + n.cx * sc, R + n.cy * sc, k === "idle" ? 1.6 : 2.6, 0, Math.PI * 2); g.fill();
+    }
+    const [wx0, wy0] = toWorld(0, 0), [wx1, wy1] = toWorld(W, H);
+    g.save(); g.beginPath(); g.arc(R, R, R - 1, 0, Math.PI * 2); g.clip();
+    g.strokeStyle = "rgba(239,230,207,.8)"; g.lineWidth = 1;
+    g.strokeRect(R + wx0 * sc, R + wy0 * sc, Math.max(3, (wx1 - wx0) * sc), Math.max(3, (wy1 - wy0) * sc));
+    g.restore();
+  }
+
+  // ---------- Hauptschleife (nur für die Karte) ----------
+  let lastLevel = "", lastK = -1;
+  function frame(t) {
+    if (isCockpit()) { requestAnimationFrame(frame); return; }
+    if (flight) {
+      const p = flight.dur ? clamp((t - flight.t0) / flight.dur, 0, 1) : 1;
+      const e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      const [ux, uy, w] = flight.interp(e), k = innerWidth / w;
+      setView(innerWidth / 2 - ux * k, innerHeight / 2 - uy * k, k);
+      if (p >= 1) { const done = flight.done; flight = null; done && done(); }
+    } else if (velocity) {
+      setView(view.x + velocity.x, view.y + velocity.y, view.k);
+      velocity.x *= .92; velocity.y *= .92;
+      if (Math.hypot(velocity.x, velocity.y) < .3) velocity = null;
+    }
+    if (wheelGoal) {
+      const f = Math.pow(wheelGoal.k / view.k, reduced ? 1 : .28);
+      zoomAt(wheelGoal.x, wheelGoal.y, f);
+      if (Math.abs(Math.log(wheelGoal.k / view.k)) < .002) wheelGoal = null;
+    }
+    if (dirty) {
+      world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+      if (view.k !== lastK) {
+        document.documentElement.style.setProperty("--k", view.k);
+        $("zVal").textContent = Math.round(view.k * 100) + "%";
+        const cardA = smooth(CARD_IN[0], CARD_IN[1], view.k);
+        world.style.opacity = cardA;
+        world.style.visibility = cardA < .02 ? "hidden" : "visible";
+        const level = view.k >= NEAR ? "z-near" : "z-mid";
+        if (level !== lastLevel) { world.className = level; lastLevel = level; }
+        lastK = view.k;
+      }
+      drawChart();
+    }
+    if (dirty || !reduced) drawSky(t);
+    dirty = false;
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Eingabe auf der Karte ----------
+  let drag = null, moved = false, samples = [];
+  stage.addEventListener("pointerdown", e => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    stopTour();
+    stopMotion();
+    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, id: e.pointerId };
+    moved = false; samples = [];
+  });
+  addEventListener("pointermove", e => {
+    if (drag && e.pointerId === drag.id && !pinch) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      if (!moved) { moved = true; stage.classList.add("panning"); hideTip(); }
+      setView(drag.vx + dx, drag.vy + dy, view.k);
+      samples.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+      if (samples.length > 6) samples.shift();
+      return;
+    }
+    if (e.target.closest && e.target.closest("#stage")) hoverStar(e);
+  });
+  addEventListener("pointerup", e => {
+    if (!drag) return;
+    if (moved && samples.length > 1 && !reduced) {
+      const a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t);
+      if (performance.now() - b.t < 80) velocity = { x: (b.x - a.x) / dt * 16, y: (b.y - a.y) / dt * 16 };
+    }
+    drag = null; stage.classList.remove("panning");
+  });
+  stage.addEventListener("wheel", e => {
+    const pv = e.target.closest(".preview");
+    if (pv && !e.ctrlKey && view.k >= NEAR && pv.scrollHeight > pv.clientHeight) return;
+    e.preventDefault();
+    stopTour();
+    flight = null; velocity = null;
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    const base = wheelGoal ? wheelGoal.k : view.k;
+    const k = clamp(base * Math.exp(-delta * (e.ctrlKey ? 0.012 : 0.0018)), MIN_K, MAX_K);
+    wheelGoal = { x: e.clientX, y: e.clientY, k };
+  }, { passive: false });
+  const touches = new Map();
+  let pinch = null;
+  stage.addEventListener("pointerdown", e => { if (e.pointerType === "touch") touches.set(e.pointerId, e); });
+  stage.addEventListener("pointermove", e => {
+    if (e.pointerType !== "touch" || !touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, e);
+    if (touches.size !== 2) return;
+    const [a, b] = [...touches.values()];
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const cx = (a.clientX + b.clientX) / 2, cy = (a.clientY + b.clientY) / 2;
+    if (pinch) { zoomAt(cx, cy, d / pinch.d); setView(view.x + cx - pinch.cx, view.y + cy - pinch.cy, view.k); }
+    pinch = { d, cx, cy }; moved = true;
+  });
+  const endTouch = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+  stage.addEventListener("pointerup", endTouch);
+  stage.addEventListener("pointercancel", endTouch);
+
+  function starAt(px, py) {
+    if (world.style.visibility === "visible" && smooth(CARD_IN[0], CARD_IN[1], view.k) > .5) return null;
+    let best = null, bd = Infinity;
+    for (const n of nodes.values()) {
+      const d = Math.hypot(n.cx * view.k + view.x - px, n.cy * view.k + view.y - py);
+      if (d < Math.max(16, starRadius(n.s) * 2.5) && d < bd) { bd = d; best = n; }
+    }
+    return best;
+  }
+  const tip = $("tip");
+  function hoverStar(e) {
+    const n = drag ? null : starAt(e.clientX, e.clientY);
+    const id = n ? n.s.id : null;
+    if (id !== hoverId) { hoverId = id; dirty = true; stage.classList.toggle("over-star", !!n); }
+    if (!n) return hideTip();
+    const s = n.s, st = stateFor(s);
+    tip.style.display = "block";
+    tip.innerHTML = `<strong>${esc(s.title)}</strong>
+      <div class="meta">${esc(groupName(s))}, ${st.kind === "idle" ? ago(s.end) : `<span class="on">${STATES[st.kind].label}</span>`}</div>
+      ${st.detail ? `<p>${esc(st.detail)}</p>` : ""}`;
+    const x = Math.min(e.clientX, innerWidth - 300), y = Math.min(e.clientY, innerHeight - 140);
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+  function hideTip() { tip.style.display = "none"; }
+
+  stage.addEventListener("click", e => {
+    if (moved) return;
+    const star = starAt(e.clientX, e.clientY);
+    if (star) { hideTip(); flyToCard(star.s.id, 1.15); return; }
+    const card = e.target.closest(".card");
+    if (!card) { select(null); return; }
+    const id = card.dataset.id;
+    if (e.target.closest("[data-log]")) { openLog(id); return; }
+    if (e.target.closest("[data-open]")) { openElsewhere(id); return; }
+    if (view.k < NEAR * 0.98) flyToCard(id, 1.4);
+    else if (!getSelection().toString()) openLog(id);
+  });
+  stage.addEventListener("mousedown", e => { if (e.detail > 1) e.preventDefault(); });
+  stage.addEventListener("dblclick", e => {
+    if (e.target.closest(".card")) return;
+    stopMotion();
+    wheelGoal = { x: e.clientX, y: e.clientY, k: clamp(view.k * 2.2, MIN_K, MAX_K) };
+  });
+
+  function select(id) {
+    selectedId = id;
+    for (const [nid, n] of nodes) n.el?.classList.toggle("selected", nid === id);
+    $("sList").querySelectorAll(".item").forEach(el => el.classList.toggle("sel", el.dataset.id === id));
+    $("sList").querySelector(".item.sel")?.scrollIntoView({ block: "nearest" });
+    $("overview").querySelectorAll(".tile").forEach(el => el.classList.toggle("sel", el.dataset.id === id));
+    dirty = true;
+  }
+
+  function stepMap(dx, dy) {
+    const from = nodes.get(selectedId) || (() => { const [cx, cy] = toWorld(innerWidth / 2, innerHeight / 2); return { cx, cy, s: { id: null } }; })();
+    let best = null, bc = Infinity;
+    for (const n of nodes.values()) {
+      if (n.s.id === from.s.id || !matches(n.s)) continue;
+      const vx = n.cx - from.cx, vy = n.cy - from.cy, along = vx * dx + vy * dy;
+      if (along <= 0) continue;
+      const cost = along + Math.abs(vx * dy - vy * dx) * 2.5;
+      if (cost < bc) { bc = cost; best = n; }
+    }
+    if (best) flyToCard(best.s.id, Math.max(view.k, 0.7), { speed: .8 });
+  }
+  // Im Cockpit: durch die Liste gehen
+  function stepList(d) {
+    if (!listOrder.length) return;
+    const i = listOrder.indexOf(logId || selectedId);
+    const next = listOrder[clamp(i < 0 ? (d > 0 ? 0 : listOrder.length - 1) : i + d, 0, listOrder.length - 1)];
+    if (next && next !== logId) openLog(next);
+  }
+
+  addEventListener("keydown", e => {
+    if ($("finder").classList.contains("open") || $("newDlg").classList.contains("open")) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openFinder(); return; }
+    const t = e.target && e.target.closest ? e.target : document.body;
+    if (t.closest("input, textarea, select")) {
+      if (e.key === "Escape") t.blur();
+      return;
+    }
+    if (t.closest("button") && (e.key === "Enter" || e.key === " ")) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key, cockpit = isCockpit();
+    if (k === "n" || k === "N") { e.preventDefault(); openNew(); return; }
+    if (k === "/") { e.preventDefault(); openFinder(); return; }
+    if (k === "m" || k === "M") { setMode(cockpit ? "map" : "cockpit"); return; }
+    if (k === "Escape") { if ($("log").classList.contains("open")) closeLog(); else if (tour) stopTour(); else if (filtering() && cockpit) resetFilter(); else select(null); return; }
+    if (cockpit) {
+      if (k === "j" || k === "ArrowDown") { e.preventDefault(); stepList(1); }
+      else if (k === "k" || k === "ArrowUp") { e.preventDefault(); stepList(-1); }
+      else if (/^[1-9]$/.test(k)) { const id = listOrder[+k - 1]; if (id) openLog(id); }
+      else if (k === "Enter" && selectedId) openLog(selectedId);
+      return;
+    }
+    if (k === "l" || k === "L") setSide(!sideOpen());
+    else if (k === " ") { e.preventDefault(); tour ? stopTour() : startTour(); }
+    else if (k === "0" || k === "Home") { stopTour(); showAll(); }
+    else if (k === "+" || k === "=") { stopTour(); wheelGoal = { x: innerWidth / 2, y: innerHeight / 2, k: clamp(view.k * 1.5, MIN_K, MAX_K) }; }
+    else if (k === "-") { stopTour(); wheelGoal = { x: innerWidth / 2, y: innerHeight / 2, k: clamp(view.k / 1.5, MIN_K, MAX_K) }; }
+    else if (k.startsWith("Arrow")) { e.preventDefault(); stopTour(); stepMap(...{ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k]); }
+    else if (k === "Enter" && selectedId) { view.k >= NEAR ? openLog(selectedId) : flyToCard(selectedId, 1.4); }
+  });
+  addEventListener("resize", resize);
+
+  $("zIn").onclick = () => { stopTour(); wheelGoal = { x: innerWidth / 2, y: innerHeight / 2, k: clamp(view.k * 1.5, MIN_K, MAX_K) }; };
+  $("zOut").onclick = () => { stopTour(); wheelGoal = { x: innerWidth / 2, y: innerHeight / 2, k: clamp(view.k / 1.5, MIN_K, MAX_K) }; };
+  $("zAll").onclick = () => { stopTour(); showAll(); };
+  function chartJump(e) {
+    if (!chart._sc) return;
+    const r = chart.getBoundingClientRect(), R = r.width / 2;
+    const wx = (e.clientX - r.left - R) / chart._sc, wy = (e.clientY - r.top - R) / chart._sc;
+    return { x: innerWidth / 2 - wx * view.k, y: innerHeight / 2 - wy * view.k, k: view.k };
+  }
+  let chartDrag = false;
+  chart.addEventListener("pointerdown", e => { stopTour(); chartDrag = true; chart.setPointerCapture(e.pointerId); const v = chartJump(e); v && flyTo(v, { speed: .5 }); });
+  chart.addEventListener("pointermove", e => { if (chartDrag && !flight) { const v = chartJump(e); v && setView(v.x, v.y, v.k); } });
+  chart.addEventListener("pointerup", () => chartDrag = false);
+
+  // ---------- Rundflug ----------
+  let tour = null;
+  function startTour() {
+    if (isCockpit()) return;
+    const list = [...sessions].filter(matches).sort((a, b) => STATES[stateFor(a).kind].order - STATES[stateFor(b).kind].order || (b.end || "").localeCompare(a.end || "")).slice(0, 12);
+    if (!list.length) return;
+    closeLog();
+    tour = { list, i: -1, timer: null };
+    $("bTour").setAttribute("aria-pressed", "true");
+    $("tour").hidden = false; $("hint").hidden = true;
+    nextStop();
+  }
+  function nextStop() {
+    if (!tour) return;
+    clearTimeout(tour.timer);
+    tour.i = (tour.i + 1) % (tour.list.length + 1);
+    if (tour.i === tour.list.length) {
+      $("tourTitle").textContent = "Die ganze Karte";
+      $("tourInfo").textContent = "Gleich geht es weiter. Leertaste oder Esc beendet den Rundflug.";
+      select(null);
+      flyTo(allView(), { done: () => tour && (tour.timer = setTimeout(nextStop, 3500)) });
+      return;
+    }
+    const s = tour.list[tour.i];
+    $("tourTitle").textContent = s.title;
+    $("tourInfo").textContent = `${tour.i + 1} von ${tour.list.length}, ${groupName(s)}, ${STATES[stateFor(s).kind].label}`;
+    flyToCard(s.id, 1.25, { done: () => tour && (tour.timer = setTimeout(nextStop, 6500)) });
+  }
+  function stopTour() {
+    if (!tour) return;
+    clearTimeout(tour.timer);
+    tour = null;
+    flight = null;
+    $("bTour").setAttribute("aria-pressed", "false");
+    $("tour").hidden = true; $("hint").hidden = false;
+  }
+  $("bTour").onclick = () => tour ? stopTour() : startTour();
+
+  // ---------- Suche ----------
+  let fSel = 0, fHits = [];
+  function openFinder() {
+    stopTour();
+    $("finder").classList.add("open");
+    $("fInput").value = "";
+    findRender();
+    $("fInput").focus();
+  }
+  function closeFinder() { $("finder").classList.remove("open"); }
+  function score(s, q) {
+    if (!q) return 1;
+    let sc = 0;
+    for (const w of q.split(/\s+/)) {
+      const t = s.title.toLowerCase(), p = groupName(s).toLowerCase(), body = `${s.firstPrompt || ""} ${s.lastPrompt || ""} ${s.branch || ""} ${s.id} ${notes[s.id] || ""}`.toLowerCase();
+      if (t.startsWith(w)) sc += 6; else if (t.includes(w)) sc += 4; else if (p.includes(w)) sc += 3; else if (body.includes(w)) sc += 1; else return 0;
+    }
+    return sc;
+  }
+  let fItems = [], fSeq = 0, fTimer = null;
+  function findRender() {
+    const q = $("fInput").value.trim().toLowerCase();
+    fHits = sessions.map(s => [s, score(s, q)]).filter(x => x[1] > 0)
+      .sort((a, b) => b[1] - a[1] || (b[0].end || "").localeCompare(a[0].end || "")).slice(0, q ? 6 : 9).map(x => x[0]);
+    fSel = 0;
+    clearTimeout(fTimer);
+    fSeq++;
+    renderFinder(q, q.length >= 3 ? null : []);
+    if (q.length >= 3) {
+      const seq = fSeq;
+      fTimer = setTimeout(async () => {
+        try {
+          const { hits } = await (await fetch(`/api/search?q=${encodeURIComponent(q)}`)).json();
+          if (seq === fSeq) renderFinder(q, hits);
+        } catch { if (seq === fSeq) renderFinder(q, []); }
+      }, 200);
+    }
+  }
+  function renderFinder(q, textHits) {
+    fItems = [...fHits.map(s => ({ id: s.id })), ...(textHits || []).map(h => ({ id: h.id, ts: h.ts, q }))];
+    const words = q.split(/\s+/).filter(w => w.length > 1).map(w => esc(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const mark = t => words.length ? esc(t).replace(new RegExp(words.join("|"), "gi"), m => `<mark>${m}</mark>`) : esc(t);
+    const color = id => colorOf(groupKey(byId.get(id) || { scratch: true }));
+    let html = fHits.map((s, i) => `
+      <li role="option" data-i="${i}" style="--c:${color(s.id)}">
+        <span class="dot"></span><div><strong>${esc(s.title)}</strong><small>${esc(groupName(s))}, ${STATES[stateFor(s).kind].label}</small></div>
+        <span class="age">${ago(s.end)}</span></li>`).join("");
+    if (textHits && textHits.length) {
+      html += `<li class="sect" role="presentation">Im Wortlaut der Verläufe</li>` + textHits.map((h, j) => `
+        <li role="option" data-i="${fHits.length + j}" style="--c:${color(h.id)}">
+          <span class="dot"></span><div><strong>${esc(h.title)}</strong><small>${h.r === "user" ? "Du" : "Claude"}, ${fmtTime(h.ts)}</small>
+          <div class="snip">${mark(h.snippet)}</div></div></li>`).join("");
+    } else if (textHits === null) html += `<li class="sect" role="presentation">Durchsuche alle Verläufe …</li>`;
+    $("fList").innerHTML = html || `<li class="none">Weder Titel noch Verläufe enthalten „${esc(q)}“.</li>`;
+    fSel = clamp(fSel, 0, Math.max(0, fItems.length - 1));
+    $("fList").querySelectorAll("li[data-i]").forEach(li => li.setAttribute("aria-selected", +li.dataset.i === fSel));
+  }
+  function findGo(i) {
+    const it = fItems[i];
+    closeFinder();
+    if (!it) return;
+    goTo(it.id, it.ts ? { ts: it.ts, q: it.q } : null);
+  }
+  $("fInput").addEventListener("input", findRender);
+  $("fInput").addEventListener("keydown", e => {
+    const items = [...$("fList").querySelectorAll("li[data-i]")];
+    if (e.key === "Escape") closeFinder();
+    else if (e.key === "Enter") findGo(fSel);
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      fSel = clamp(fSel + (e.key === "ArrowDown" ? 1 : -1), 0, Math.max(0, items.length - 1));
+      items.forEach(li => li.setAttribute("aria-selected", +li.dataset.i === fSel));
+      items[fSel]?.scrollIntoView({ block: "nearest" });
+    }
+  });
+  $("fList").addEventListener("click", e => { const li = e.target.closest("li[data-i]"); if (li) findGo(+li.dataset.i); });
+  $("finder").addEventListener("click", e => { if (e.target.id === "finder") closeFinder(); });
+  $("bFind").onclick = openFinder;
+
+  // ---------- Session öffnen (Arbeitsfläche) ----------
+  let logId = null, logAll = false;
+  async function openLog(id, focus) {
+    const s = byId.get(id);
+    if (!s) return;
+    logId = id; select(id); stopTour();
+    logAll = !!focus;
+    const c = colorOf(groupKey(s));
+    const L = $("log");
+    L.style.setProperty("--c", c);
+    $("logTitle").textContent = s.title;
+    $("logPath").textContent = s.cwd + (s.branch && s.branch !== "HEAD" ? `  (${s.branch})` : "");
+    $("logOpen").textContent = OPEN_LABEL[s.opener.kind];
+    $("logOpen").title = openHint(s);
+    $("logTerm").hidden = s.opener.kind === "terminal";
+    $("logStream").innerHTML = `<p style="color:var(--dim)">Verlauf wird geladen …</p>`;
+    L.classList.add("open"); L.setAttribute("aria-hidden", "false");
+    $("center").classList.add("showing-log");
+    document.body.classList.add("pane-open");
+    consoleError = ""; permsKey = "";
+    $("logFiles").hidden = true;
+    $("noteInput").value = notes[id] || "";
+    renderPaneHead();
+    renderConsole();
+    // Gesehen: ab jetzt gilt die Session nicht mehr als ungelesen
+    if (s.state && (s.state.unread || s.state.kind === "done")) {
+      s.state.unread = false;
+      if (s.state.kind === "done") s.state.kind = "idle";
+      renderList(); renderCounts(); renderOverview();
+    }
+    post(`/api/sessions/${encodeURIComponent(id)}/seen`).catch(() => {});
+    if (!focus && matchMedia("(pointer: fine)").matches) $("cInput").focus({ preventScroll: true });
+    await fillLog(id, !focus, focus);
+  }
+  function renderPaneHead() {
+    const s = byId.get(logId);
+    if (!s) return;
+    const st = stateFor(s), d = STATES[st.kind];
+    $("logKicker").innerHTML = `<span class="dot"></span><span class="proj">${esc(groupName(s))}</span><span class="when">${ago(s.end)}</span>`;
+    const ps = $("paneState");
+    ps.className = "pstate " + d.cls;
+    ps.innerHTML = `<span class="badge">${d.label}</span><span class="det">${esc(st.detail || (st.kind === "idle" ? "Keine offenen Punkte." : ""))}</span>${st.since ? `<span class="since">${since(st.since)}</span>` : ""}`;
+    const acts = st.kind === "working" ? [] : (st.actions || []);
+    $("paneReplies").hidden = !acts.length;
+    $("paneReplies").innerHTML = acts.map(a => `<button type="button" class="btn" data-reply="${esc(a.message)}" title="Schickt: ${esc(a.message)}">${esc(a.label)}</button>`).join("");
+    const pl = $("panePlan"), pi = planInfo(s.plan);
+    pl.hidden = !pi;
+    if (pi) {
+      pl.open = !!pi.cur || st.kind === "working";
+      pl.querySelector("summary").innerHTML = `Aufgaben: <b>${pi.done} von ${pi.total}</b>${pi.cur ? `, gerade: ${esc(pi.cur.t)}` : pi.done === pi.total ? ", alle erledigt" : ""}`;
+      pl.querySelector("ol").innerHTML = s.plan.map(x => `<li class="${x.st === "completed" ? "done" : x.st === "in_progress" ? "cur" : ""}"><i>${x.st === "completed" ? "✓" : x.st === "in_progress" ? "▶" : "○"}</i>${esc(x.t)}</li>`).join("");
+    }
+    $("logFacts").innerHTML = [
+      ["Zeitraum", `${fmtTime(s.start)} bis ${fmtTime(s.end)}`],
+      ["Prompts", s.userMsgs], ["Tool-Aufrufe", fmtNum(s.toolCalls)],
+      s.cost != null ? ["Kosten", `$${s.cost.toFixed(2)}`] : ["Tokens erzeugt", fmtNum(s.outTokens)],
+      s.linesAdded || s.linesRemoved ? ["Zeilen", `+${s.linesAdded} / −${s.linesRemoved}`] : null,
+      s.model ? ["Modell", s.model.replace(/^claude-/, "")] : null,
+      ["Entstanden in", FROM[s.opener.from] + (s.opener.archived ? " (archiviert)" : "")],
+    ].filter(Boolean).map(([a, b]) => `<div><b>${esc(b)}</b>${a}</div>`).join("");
+  }
+  async function fillLog(id, toBottom, focus) {
+    try {
+      const full = await (await fetch(`/api/sessions/${encodeURIComponent(id)}${logAll ? "?all=1" : ""}`)).json();
+      if (logId !== id) return;
+      const box = $("logStream");
+      const stick = toBottom || box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+      const top = box.scrollTop;
+      box.innerHTML = (full.older ? `<p class="older">${full.older} ältere Nachrichten sind ausgeblendet. Die Suche findet auch sie.</p>` : "")
+        + full.messages.map(m => m.r === "tools"
+        ? `<details class="tools"><summary>${m.tools.length} ${m.tools.length === 1 ? "Werkzeug" : "Werkzeuge"}: ${esc([...new Set(m.tools.map(t => t.name))].join(", "))}</summary>
+             <div>${m.tools.map(t => esc(t.name) + (t.hint ? ": " + esc(t.hint) : "")).join("<br>")}</div></details>`
+        : m.r === "note" ? `<div class="msg tools">${esc(m.t)}, ${fmtTime(m.ts)}</div>`
+        : `<div class="msg ${m.r}" data-ts="${esc(m.ts || "")}"><span class="who">${m.r === "user" ? "Du" : "Claude"}, ${fmtTime(m.ts)}</span>${md(m.t)}</div>`).join("")
+        || `<p style="color:var(--dim)">In dieser Session gibt es noch keine Nachrichten.</p>`;
+      renderFiles(full);
+      renderLive();
+      const hit = focus && box.querySelector(`.msg[data-ts="${CSS.escape(focus.ts || "")}"]`);
+      if (hit) {
+        hit.classList.add("hit");
+        const word = focus.q && markWord(hit, focus.q);
+        (word || hit).scrollIntoView({ block: word ? "center" : "start" });
+      }
+      else if (stick) box.scrollTop = box.scrollHeight;
+      else box.scrollTop = top;
+    } catch (err) {
+      $("logStream").innerHTML = `<p style="color:var(--rose)">Der Verlauf konnte nicht geladen werden: ${esc(err.message)}. Läuft der Server noch?</p>`;
+    }
+  }
+  function closeLog() {
+    logId = null;
+    $("log").classList.remove("open"); $("log").setAttribute("aria-hidden", "true");
+    $("center").classList.remove("showing-log");
+    document.body.classList.remove("pane-open");
+    document.activeElement?.blur();
+    renderOverview();
+  }
+  $("logClose").onclick = closeLog;
+  $("logZoom").onclick = () => { const id = logId; if (!id) return; if (isCockpit()) { setMode("map"); closeLog(); setTimeout(() => flyToCard(id, 1.4), 50); } else { closeLog(); flyToCard(id, 1.4); } };
+  $("logCopy").onclick = async e => {
+    const s = byId.get(logId);
+    if (!s) return;
+    const cmd = `cd "${s.cwd}"; claude --resume ${s.id}`;
+    try { await navigator.clipboard.writeText(cmd); e.target.textContent = "Kopiert"; }
+    catch { prompt("Befehl kopieren:", cmd); }
+    setTimeout(() => e.target.textContent = "Befehl kopieren", 1600);
+  };
+  $("logOpen").onclick = () => logId && openElsewhere(logId);
+  $("logTerm").onclick = () => logId && openElsewhere(logId, "terminal");
+  $("paneReplies").addEventListener("click", e => { const b = e.target.closest("[data-reply]"); if (b && logId) sendText(logId, b.dataset.reply); });
+  let noteTimer = null;
+  $("noteInput").addEventListener("input", e => {
+    if (!logId) return;
+    const v = e.target.value.trim();
+    if (v) notes[logId] = v; else delete notes[logId];
+    store.set("sc-notes", notes);
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => { renderList(); renderOverview(); }, 400);
+  });
+  let flashTimer = null;
+  function flashState(text) {
+    const st = $("cState");
+    st.textContent = text; st.title = text; st.className = "state on";
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(renderConsole, 5000);
+  }
+
+  function markWord(el, q) {
+    const w = q.toLowerCase().split(/\s+/).find(x => x.length > 1);
+    if (!w) return null;
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (n.parentElement.closest(".who")) continue;
+      const i = n.textContent.toLowerCase().indexOf(w);
+      if (i < 0) continue;
+      const range = document.createRange();
+      range.setStart(n, i); range.setEnd(n, i + w.length);
+      const mark = document.createElement("mark");
+      range.surroundContents(mark);
+      return mark;
+    }
+    return null;
+  }
+
+  // ---------- Geänderte Dateien ----------
+  function renderFiles(full) {
+    const box = $("logFiles"), files = full.files || [];
+    box.hidden = !files.length;
+    $("logMoreSum").textContent = files.length ? `Notiz, Details, ${files.length} ${files.length === 1 ? "geänderte Datei" : "geänderte Dateien"}` : "Notiz und Details";
+    if (!files.length) return;
+    const root = (full.cwd || "").replace(/[\\/]+$/, "").toLowerCase();
+    const short = p => p.toLowerCase().startsWith(root + "\\") || p.toLowerCase().startsWith(root + "/") ? p.slice(root.length + 1) : p;
+    const how = full.fileOpener === "code" ? "In VS Code öffnen" : "Im Explorer zeigen";
+    box.querySelector("summary").textContent = `${files.length} ${files.length === 1 ? "Datei" : "Dateien"} von Claude geändert`;
+    box.querySelector(".flist").innerHTML = files.map(f => `
+      <button type="button" data-path="${esc(f.path)}" title="${how}: ${esc(f.path)}"><span>\u200e${esc(short(f.path))}</span>
+        <small>${f.created && f.edits === 1 ? "neu" : f.edits + "×"}, ${ago(f.ts)}</small></button>`).join("");
+  }
+  $("logFiles").addEventListener("click", async e => {
+    const b = e.target.closest("[data-path]");
+    if (!b || !logId) return;
+    try {
+      const r = await post(`/api/sessions/${encodeURIComponent(logId)}/open-file`, { path: b.dataset.path });
+      flashState(r.with === "code" ? "Datei öffnet sich in VS Code." : "Datei wird im Explorer gezeigt.");
+    } catch (err) { consoleError = err.message; renderConsole(); }
+  });
+
+  // ---------- Liste ----------
+  const sideOpen = () => document.body.classList.contains("side-open");
+  const SORTS = {
+    recent: (a, b) => (b.end || "").localeCompare(a.end || ""),
+    prompts: (a, b) => b.userMsgs - a.userMsgs || SORTS.recent(a, b),
+    tokens: (a, b) => b.outTokens - a.outTokens || SORTS.recent(a, b),
+    // Dringlichkeit: wer am längsten auf dich wartet, zuerst; sonst das Jüngste zuerst
+    state: (a, b) => {
+      const sa = stateFor(a), sb = stateFor(b), oa = STATES[sa.kind].order, ob = STATES[sb.kind].order;
+      if (oa !== ob) return oa - ob;
+      if (oa <= 1) return (sa.since || a.end || 0) < (sb.since || b.end || 0) ? -1 : 1;
+      return SORTS.recent(a, b);
+    },
+  };
+  let listOrder = [];
+  function itemHtml(s, idx) {
+    const st = stateFor(s), d = STATES[st.kind], note = notes[s.id];
+    const det = st.kind === "idle" ? "" : st.detail;
+    return `<button class="item ${d.cls}${s.id === (logId || selectedId) ? " sel" : ""}" data-id="${s.id}" style="--c:${colorOf(groupKey(s))}"
+      title="${esc(d.label)}${st.detail ? ": " + esc(st.detail) : ""}">
+      <span class="dot"></span><strong>${esc(s.title)}</strong>${idx < 9 ? `<span class="key">${idx + 1}</span>` : "<span></span>"}
+      ${det ? `<small class="det">${esc(det)}</small>` : ""}
+      ${note ? `<small class="note">${esc(note)}</small>` : ""}
+      <small>${filt.sort === "project" ? "" : esc(groupName(s)) + ", "}${st.since ? since(st.since) : ago(s.end)}${filt.sort === "state" ? "" : `, ${d.label}`}</small></button>`;
+  }
+  function renderList() {
+    const list = sessions.filter(matches);
+    $("bList").innerHTML = `Liste${filtering() ? ` (${list.length} von ${sessions.length})` : ""}<kbd>L</kbd>`;
+    $("bList").setAttribute("aria-pressed", sideOpen());
+    const c = counts();
+    const chip = st => $("sStatus").querySelector(`[data-status="${st}"]`);
+    chip("needs").innerHTML = `Braucht dich${c.needs + c.stalled ? `<b>${c.needs + c.stalled}</b>` : ""}`;
+    chip("working").innerHTML = `Arbeitet${c.working ? `<b>${c.working}</b>` : ""}`;
+    chip("done").innerHTML = `Fertig${c.done ? `<b>${c.done}</b>` : ""}`;
+    chip("connected").hidden = !runs.size && filt.status !== "connected";
+    $("sCount").textContent = filtering() ? `${list.length} von ${sessions.length} Sessions` : `${sessions.length} Sessions`;
+    if (!isCockpit() && !sideOpen()) return;
+    const box = $("sList"), top = box.scrollTop;
+    let html = "", idx = 0;
+    listOrder = [];
+    const item = s => { listOrder.push(s.id); return itemHtml(s, idx++); };
+    if (filt.sort === "state") {
+      const sorted = [...list].sort(SORTS.state);
+      let lastKind = null;
+      for (const s of sorted) {
+        const kind = stateFor(s).kind;
+        if (kind !== lastKind) {
+          lastKind = kind;
+          const n = sorted.filter(x => stateFor(x).kind === kind).length;
+          html += `<div class="grp ${STATES[kind].cls}"><span>${STATES[kind].label}</span><small>${n}</small></div>`;
+        }
+        html += item(s);
+      }
+    } else if (filt.sort === "project") {
+      const groups = new Map();
+      for (const s of [...list].sort(SORTS.state)) {
+        const k = groupKey(s);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(s);
+      }
+      for (const [k, items] of groups) {
+        const s0 = items[0];
+        html += `<div class="grp" style="--c:${colorOf(k)}"><span title="${esc(s0.scratch ? "Sessions ohne Projektordner" : s0.cwd)}">${esc(groupName(s0))}</span>
+          <small>${items.length}</small>${s0.scratch ? "" : `<button type="button" data-new="${esc(s0.cwd)}" title="Neue Session in ${esc(s0.cwd)}">Neue Session</button>`}</div>`
+          + items.map(item).join("");
+      }
+    } else html = [...list].sort(SORTS[filt.sort]).map(item).join("");
+    box.innerHTML = html || `<div class="side-empty">Keine Session passt zu diesem Filter.<br><button type="button" class="btn" data-reset>Filter zurücksetzen</button></div>`;
+    box.scrollTop = top;
+  }
+  function setSide(open) {
+    document.body.classList.toggle("side-open", open);
+    store.set("sc-side", open);
+    renderList();
+    dirty = true;
+  }
+  function applyFilter() { renderCards(); renderList(); renderOverview(); renderCounts(); dirty = true; }
+  function setStatus(st) {
+    filt.status = st;
+    $("sStatus").querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x.dataset.status === st));
+    applyFilter();
+  }
+  function resetFilter() {
+    Object.assign(filt, { text: "", status: "all", origin: "all", since: "all" });
+    $("sText").value = ""; $("sOrigin").value = "all"; $("sSince").value = "all";
+    setStatus("all");
+  }
+  $("bList").onclick = () => setSide(!sideOpen());
+  $("sText").addEventListener("input", e => { filt.text = e.target.value.trim().toLowerCase(); applyFilter(); });
+  $("sText").addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { e.preventDefault(); $("sList").querySelector(".item")?.focus(); }
+    if (e.key === "Escape" && filt.text) { e.stopPropagation(); e.target.value = ""; filt.text = ""; applyFilter(); }
+  });
+  $("sStatus").addEventListener("click", e => { const c = e.target.closest(".chip"); if (c) setStatus(c.dataset.status); });
+  $("sSince").onchange = e => { filt.since = e.target.value; applyFilter(); };
+  $("sOrigin").onchange = e => { filt.origin = e.target.value; applyFilter(); };
+  $("sSort").onchange = e => { filt.sort = e.target.value; store.set("sc-sort", filt.sort); renderList(); };
+  $("sList").addEventListener("click", e => {
+    if (e.target.closest("[data-reset]")) return resetFilter();
+    const nb = e.target.closest("[data-new]");
+    if (nb) return openNew(nb.dataset.new);
+    const it = e.target.closest(".item");
+    if (!it) return;
+    stopTour();
+    if (isCockpit()) openLog(it.dataset.id);
+    else flyToCard(it.dataset.id, clamp(view.k, 1.1, 1.6), { speed: .8 });
+  });
+  $("sList").addEventListener("dblclick", e => { const it = e.target.closest(".item"); if (it) openLog(it.dataset.id); });
+  $("sList").addEventListener("keydown", e => {
+    const it = e.target.closest(".item");
+    if (!it) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); e.stopPropagation();
+      const all = [...$("sList").querySelectorAll(".item")], i = all.indexOf(it) + (e.key === "ArrowDown" ? 1 : -1);
+      if (i < 0) return $("sText").focus();
+      const next = all[i];
+      if (next) { next.focus(); if (isCockpit()) openLog(next.dataset.id); else { select(next.dataset.id); flyToCard(next.dataset.id, clamp(view.k, 1.1, 1.6), { speed: .6 }); } }
+    } else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); openLog(it.dataset.id); }
+  });
+  $("sNew").onclick = () => openNew();
+
+  // ---------- Übersicht: alle Sessions als Kacheln ----------
+  function tileHtml(s) {
+    const st = stateFor(s), d = STATES[st.kind], pi = planInfo(s.plan), note = notes[s.id], r = runs.get(s.id);
+    const actions = [];
+    if (st.ours && st.pending) {
+      if (st.pending.tool === "AskUserQuestion") actions.push(`<button type="button" class="btn primary" data-act="open">Frage beantworten</button>`);
+      else actions.push(`<button type="button" class="btn primary" data-act="allow" data-req="${esc(st.pending.requestId)}">Erlauben</button>
+        <button type="button" class="btn" data-act="deny" data-req="${esc(st.pending.requestId)}">Ablehnen</button>`);
+    } else if (st.kind === "needs_you" && !r && s.opener.kind === "app") {
+      actions.push(`<button type="button" class="btn primary" data-act="elsewhere">${OPEN_LABEL.app}</button>`);
+    }
+    for (const a of (st.kind === "working" ? [] : st.actions || []).slice(0, 2)) actions.push(`<button type="button" class="btn" data-act="reply" data-reply="${esc(a.message)}">${esc(a.label)}</button>`);
+    if (st.kind === "done") actions.push(`<button type="button" class="btn" data-act="seen">Gelesen</button>`);
+    if (st.kind === "working" && r) actions.push(`<button type="button" class="btn" data-act="stop">Stoppen</button>`);
+    return `<article class="tile ${d.cls}${s.id === (logId || selectedId) ? " sel" : ""}" data-id="${s.id}" tabindex="0" role="button">
+      <div class="tile-top"><span class="badge">${d.label}</span><span>${st.since ? since(st.since) : ago(s.end)}</span><span class="proj" title="${esc(s.cwd)}">${esc(groupName(s))}</span></div>
+      <h3>${esc(s.title)}</h3>
+      ${st.detail ? `<p class="det">${esc(st.detail)}</p>` : s.lastPrompt ? `<p class="det">Zuletzt: ${esc(s.lastPrompt)}</p>` : ""}
+      ${pi ? `<div class="plan-bar"><i style="width:${Math.round(pi.done / pi.total * 100)}%"></i></div><div class="plan-line">${pi.done} von ${pi.total}${pi.cur ? `: ${esc(pi.cur.t)}` : ""}</div>` : ""}
+      ${note ? `<p class="note">${esc(note)}</p>` : ""}
+      ${actions.length ? `<div class="tile-actions">${actions.join("")}</div>` : ""}
+    </article>`;
+  }
+  function renderOverview() {
+    if (!isCockpit() || logId) return;
+    const list = sessions.filter(matches).sort(SORTS.state);
+    const box = $("overview"), top = box.scrollTop;
+    if (!list.length) {
+      box.innerHTML = sessions.length
+        ? `<div class="ov-empty"><strong>Nichts passt zu diesem Filter</strong><button type="button" class="btn" data-reset>Filter zurücksetzen</button></div>`
+        : `<div class="ov-empty"><strong>Noch keine Sessions</strong>Starte eine mit „Neue Session“, sie erscheint dann hier.</div>`;
+      return;
+    }
+    let html = "", lastKind = null;
+    for (const s of list) {
+      const kind = stateFor(s).kind;
+      if (kind !== lastKind) {
+        if (lastKind) html += `</div></section>`;
+        lastKind = kind;
+        const n = list.filter(x => stateFor(x).kind === kind).length;
+        html += `<section class="ov-sect ${STATES[kind].cls}"><h2>${STATES[kind].label}<small>${n}</small></h2><div class="tiles">`;
+      }
+      html += tileHtml(s);
+    }
+    box.innerHTML = html + `</div></section>`;
+    box.scrollTop = top;
+  }
+  $("overview").addEventListener("click", async e => {
+    if (e.target.closest("[data-reset]")) return resetFilter();
+    const tile = e.target.closest(".tile");
+    if (!tile) return;
+    const id = tile.dataset.id, act = e.target.closest("[data-act]");
+    if (!act) return openLog(id);
+    e.stopPropagation();
+    const a = act.dataset.act;
+    try {
+      if (a === "allow" || a === "deny") { act.disabled = true; await post(`/api/sessions/${encodeURIComponent(id)}/permission`, { requestId: act.dataset.req, allow: a === "allow" }); }
+      else if (a === "reply") sendText(id, act.dataset.reply);
+      else if (a === "seen") { const s = byId.get(id); if (s && s.state) { s.state.unread = false; s.state.kind = "idle"; } post(`/api/sessions/${encodeURIComponent(id)}/seen`).catch(() => {}); renderList(); renderCounts(); renderOverview(); }
+      else if (a === "stop") await post(`/api/sessions/${encodeURIComponent(id)}/interrupt`);
+      else if (a === "elsewhere") openElsewhere(id);
+      else openLog(id);
+    } catch (err) { pushFeed(id, byId.get(id)?.title || id, err.message, () => openLog(id)); }
+  });
+  $("overview").addEventListener("keydown", e => { const t = e.target.closest(".tile"); if (t && e.key === "Enter" && e.target === t) openLog(t.dataset.id); });
+
+  // ---------- Neue Session ----------
+  let pendingOpen = null;
+  function projectFolders() {
+    const seenCwd = new Map();
+    for (const s of [...sessions].sort(SORTS.recent)) if (!s.scratch && s.cwd && !seenCwd.has(s.cwd.toLowerCase())) seenCwd.set(s.cwd.toLowerCase(), s);
+    return [...seenCwd.values()];
+  }
+  function openNew(cwd) {
+    stopTour();
+    const folders = projectFolders(), sel = byId.get(logId || selectedId);
+    const pre = cwd || (sel && !sel.scratch ? sel.cwd : folders[0] && folders[0].cwd);
+    $("nProj").innerHTML = folders.map(s => `<option value="${esc(s.cwd)}">${esc(groupName(s))}  (${esc(s.cwd)})</option>`).join("")
+      + `<option value="">Anderer Ordner …</option>`;
+    $("nProj").value = folders.some(f => f.cwd === pre) ? pre : "";
+    $("nPath").hidden = $("nProj").value !== "";
+    $("nState").textContent = ""; $("nState").className = "state";
+    $("newDlg").classList.add("open");
+    ($("nPath").hidden ? $("nText") : $("nPath")).focus();
+  }
+  function closeNew() { $("newDlg").classList.remove("open"); }
+  $("nProj").onchange = () => { $("nPath").hidden = $("nProj").value !== ""; if (!$("nPath").hidden) $("nPath").focus(); };
+  $("nCancel").onclick = closeNew;
+  $("bNew").onclick = () => openNew();
+  $("newDlg").addEventListener("click", e => { if (e.target.id === "newDlg") closeNew(); });
+  $("newDlg").addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); closeNew(); } });
+  $("nText").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("newForm").requestSubmit(); } });
+  $("newForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cwd = $("nProj").value || $("nPath").value.trim(), text = $("nText").value.trim();
+    const st = $("nState");
+    if (!cwd || !text) { st.textContent = !cwd ? "Welcher Ordner?" : "Schreib Claude, womit es anfangen soll."; st.className = "state ask"; return; }
+    $("nGo").disabled = true; st.textContent = "Startet …"; st.className = "state on";
+    try {
+      const r = await post("/api/new", { cwd, text, mode: $("nMode").value });
+      pendingOpen = r.id;
+      $("nText").value = "";
+      closeNew();
+      pushFeed(r.id, "Neue Session", `startet in ${cwd}.`, () => {});
+      load();
+    } catch (err) { st.textContent = err.message; st.className = "state ask"; }
+    $("nGo").disabled = false;
+  });
+
+  // ---------- Weiterarbeiten: Nachrichten senden, Erlaubnisse geben ----------
+  let consoleError = "", permsKey = "";
+
+  function renderLive() {
+    if (!logId) return;
+    const box = $("logStream"), r = runs.get(logId), text = partials.get(logId) || "";
+    let el = box.querySelector(".msg.live");
+    if (!text && !isBusy(r)) { el?.remove(); return; }
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+    if (!el) { el = document.createElement("div"); el.className = "msg assistant live"; }
+    box.appendChild(el);
+    el.innerHTML = `<span class="who">Claude, gerade eben</span>${text ? md(text) : ""}`;
+    if (stick) box.scrollTop = box.scrollHeight;
+  }
+
+  function permHtml(p) {
+    const i = p.input || {};
+    if (p.tool === "AskUserQuestion" && Array.isArray(i.questions)) {
+      return `<div class="perm" data-req="${esc(p.requestId)}"><h3>Claude hat eine Frage an dich</h3>
+        ${i.questions.map((q, qi) => `<div class="q" data-q="${qi}" data-multi="${q.multiSelect ? 1 : 0}"><p>${esc(q.question)}</p><div class="opts">
+          ${(q.options || []).map(o => `<button type="button" class="btn" data-opt="${esc(o.label)}" aria-pressed="false" title="${esc(o.description || "")}">${esc(o.label)}</button>`).join("")}
+        </div></div>`).join("")}
+        <div class="row"><button type="button" class="btn" data-deny>Nicht beantworten</button><button type="button" class="btn primary" data-answer>Antworten</button></div></div>`;
+    }
+    let what;
+    if (i.command) what = i.command;
+    else if (i.file_path && i.old_string != null) what = `${i.file_path}\n\n− ${String(i.old_string).slice(0, 700)}\n\n+ ${String(i.new_string || "").slice(0, 700)}`;
+    else if (i.file_path) what = i.file_path + (i.content ? "\n\n" + String(i.content).slice(0, 900) : "");
+    else if (i.url) what = i.url;
+    else what = JSON.stringify(i, null, 2).slice(0, 1400);
+    return `<div class="perm" data-req="${esc(p.requestId)}">
+      <h3>Claude möchte <b>${esc(p.display || p.tool)}</b> verwenden</h3>
+      ${i.description ? `<p class="q">${esc(i.description)}</p>` : ""}
+      <pre>${esc(what)}</pre>
+      <div class="row"><button type="button" class="btn" data-deny>Ablehnen</button><button type="button" class="btn primary" data-allow>Erlauben</button></div></div>`;
+  }
+
+  function renderConsole() {
+    if (!logId) return;
+    const s = byId.get(logId), r = runs.get(logId);
+    const pending = (r && r.pending) || [];
+    const key = pending.map(p => p.requestId).join(",");
+    if (key !== permsKey) { permsKey = key; $("perms").innerHTML = pending.map(permHtml).join(""); }
+    const notesHtml = [];
+    if (consoleError) notesHtml.push(`<div class="notice error">${esc(consoleError)}</div>`);
+    if (r && r.error) notesHtml.push(`<div class="notice error">${esc(r.error)}</div>`);
+    if (s && elsewhere(s)) notesHtml.push(`<div class="notice">Diese Session war gerade eben woanders aktiv, etwa in der Claude-App oder einem Terminal. Schreibst du hier, arbeiten zwei Programme im selben Verlauf und er kann sich aufspalten. Am sichersten wartest du, bis sie dort fertig ist.</div>`);
+    $("notice").innerHTML = notesHtml.join("");
+    const st = $("cState"), busy = isBusy(r);
+    st.className = "state" + (pending.length ? " ask" : busy ? " on" : "");
+    st.textContent = !r ? "Die erste Nachricht setzt diese Session fort."
+      : pending.length ? "Wartet auf deine Antwort"
+      : r.status === "starting" ? "Claude startet …"
+      : busy ? (r.note ? `Arbeitet: ${r.note}` : "Arbeitet …")
+      : r.status === "closing" ? "Wird getrennt …"
+      : "Fertig. Bereit für die nächste Nachricht.";
+    st.title = st.textContent;
+    $("cStop").hidden = !busy && !pending.length;
+    $("cRelease").hidden = !r || busy || pending.length > 0;
+    if (r && r.mode) $("cMode").value = r.mode;
+    $("cSend").textContent = s && elsewhere(s) ? "Trotzdem senden" : busy ? "Nachschieben" : "Senden";
+  }
+
+  async function sendText(id, text) {
+    text = String(text || "").trim();
+    if (!id || !text) return;
+    if (logId !== id) openLog(id);
+    $("cSend").disabled = true;
+    consoleError = "";
+    const box = $("logStream"), pend = document.createElement("div");
+    pend.className = "msg user sending";
+    pend.innerHTML = `<span class="who">Du, wird gesendet</span>${md(text)}`;
+    box.querySelector(".msg.live") ? box.insertBefore(pend, box.querySelector(".msg.live")) : box.appendChild(pend);
+    box.scrollTop = box.scrollHeight;
+    try {
+      await post(`/api/sessions/${encodeURIComponent(id)}/send`, { text, mode: $("cMode").value });
+      if ($("cInput").value.trim() === text) { $("cInput").value = ""; autosize(); }
+    } catch (err) {
+      pend.remove();
+      consoleError = err.message;
+    }
+    $("cSend").disabled = false;
+    renderConsole();
+  }
+  function autosize() { const t = $("cInput"); t.style.height = "auto"; t.style.height = Math.min(180, t.scrollHeight + 2) + "px"; }
+  $("cInput").addEventListener("input", autosize);
+  $("cInput").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); }
+  });
+  $("composer").addEventListener("submit", e => { e.preventDefault(); sendText(logId, $("cInput").value); });
+  $("cStop").onclick = () => logId && post(`/api/sessions/${encodeURIComponent(logId)}/interrupt`).catch(err => { consoleError = err.message; renderConsole(); });
+  $("cRelease").onclick = () => logId && post(`/api/sessions/${encodeURIComponent(logId)}/release`).catch(err => { consoleError = err.message; renderConsole(); });
+
+  $("perms").addEventListener("click", async e => {
+    const box = e.target.closest(".perm");
+    if (!box || !logId) return;
+    const opt = e.target.closest("[data-opt]");
+    if (opt) {
+      const q = opt.closest(".q");
+      if (q.dataset.multi === "1") opt.setAttribute("aria-pressed", opt.getAttribute("aria-pressed") !== "true");
+      else q.querySelectorAll("[data-opt]").forEach(b => b.setAttribute("aria-pressed", b === opt));
+      return;
+    }
+    const req = box.dataset.req;
+    let body = null;
+    if (e.target.closest("[data-allow]")) body = { requestId: req, allow: true };
+    else if (e.target.closest("[data-deny]")) body = { requestId: req, allow: false };
+    else if (e.target.closest("[data-answer]")) {
+      const p = (runs.get(logId)?.pending || []).find(x => x.requestId === req);
+      if (!p) return;
+      const answers = {};
+      box.querySelectorAll(".q[data-q]").forEach(q => {
+        const picked = [...q.querySelectorAll('[aria-pressed="true"]')].map(b => b.dataset.opt);
+        if (picked.length) answers[p.input.questions[+q.dataset.q].question] = picked.join(", ");
+      });
+      if (!Object.keys(answers).length) return;
+      body = { requestId: req, allow: true, answers };
+    }
+    if (!body) return;
+    box.querySelectorAll("button").forEach(b => b.disabled = true);
+    try { await post(`/api/sessions/${encodeURIComponent(logId)}/permission`, body); }
+    catch (err) { consoleError = err.message; permsKey = ""; renderConsole(); }
+  });
+
+  // ---------- Benachrichtigen ----------
+  function setPref(k, v) { prefs[k] = v; store.set("sc-prefs", prefs); $("bNotify").setAttribute("aria-pressed", !!prefs.notify); $("bSound").setAttribute("aria-pressed", !!prefs.sound); }
+  $("bNotify").onclick = async () => {
+    if (prefs.notify) return setPref("notify", false);
+    if (!("Notification" in window)) { pushFeed("sys", "Benachrichtigungen", "Dieser Browser kann keine Desktop-Benachrichtigungen zeigen.", () => {}); return; }
+    const p = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+    if (p === "granted") setPref("notify", true);
+    else pushFeed("sys", "Benachrichtigungen", "Der Browser hat Benachrichtigungen für diese Seite nicht erlaubt.", () => {});
+  };
+  $("bSound").onclick = () => { setPref("sound", !prefs.sound); if (prefs.sound) beep(); };
+  function beep() {
+    try {
+      const ac = beep.ac || (beep.ac = new (window.AudioContext || window.webkitAudioContext)());
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.type = "sine"; o.frequency.setValueAtTime(880, t); o.frequency.setValueAtTime(1175, t + .12);
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.07, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + .4);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + .45);
+    } catch {}
+  }
+  function notify(id, title, body, sound) {
+    if (sound && prefs.sound) beep();
+    if (!prefs.notify || !("Notification" in window) || Notification.permission !== "granted") return;
+    if (!document.hidden && document.hasFocus()) return; // du schaust ohnehin hin
+    try {
+      const n = new Notification(title, { body, tag: "sc-" + id });
+      n.onclick = () => { window.focus(); openLog(id); n.close(); };
+    } catch {}
+  }
+  // Zustandswechsel melden: neu "braucht dich" / "hängt" (mit Ton), neu "fertig" (nur Hinweis)
+  function watchTransitions() {
+    for (const s of sessions) {
+      const k = stateFor(s).kind, prev = prevKinds.get(s.id);
+      prevKinds.set(s.id, k);
+      if (!prev || prev === k || logId === s.id) continue;
+      if (k === "needs_you" || k === "stalled") { notify(s.id, s.title, stateFor(s).detail, true); pushFeed(s.id, s.title, stateFor(s).detail, () => openLog(s.id), true); }
+      else if (k === "done") notify(s.id, s.title, `Fertig: ${stateFor(s).detail}`.slice(0, 160), false);
+    }
+  }
+
+  // ---------- Funksprüche ----------
+  function ping(s) {
+    const n = nodes.get(s.id);
+    if (n) { n.flareAt = performance.now(); n.el?.classList.remove("flare"); void n.el?.offsetWidth; n.el?.classList.add("flare"); }
+    if (logId === s.id) { fillLog(s.id, false); renderPaneHead(); return; }
+  }
+  function pushFeed(id, title, text, action, stay) {
+    const feed = $("feed");
+    feed.querySelector(`[data-id="${id}"]`)?.remove();
+    const b = document.createElement("button");
+    b.className = "ping"; b.dataset.id = id; b.style.setProperty("--c", byId.has(id) ? colorOf(groupKey(byId.get(id))) : "#c9a86a");
+    b.innerHTML = `<strong>${esc(title)}</strong><span>${esc(String(text).slice(0, 160))}</span>`;
+    b.onclick = () => { stopTour(); action(); b.remove(); };
+    feed.prepend(b);
+    while (feed.children.length > 4) feed.lastChild.remove();
+    if (!stay) setTimeout(() => { b.classList.add("gone"); setTimeout(() => b.remove(), 700); }, 14000);
+  }
+
+  // ---------- Live-Ereignisse der von hier gesteuerten Sessions ----------
+  function onRun(info) {
+    const before = runs.get(info.sid);
+    if (info.status === "off") runs.delete(info.sid); else runs.set(info.sid, info);
+    partials.set(info.sid, info.partial || "");
+    const s = byId.get(info.sid);
+    const known = new Set(((before && before.pending) || []).map(p => p.requestId));
+    const fresh = (info.pending || []).filter(p => !known.has(p.requestId));
+    if (s && fresh.length && logId !== info.sid) {
+      const p = fresh[0];
+      const text = p.tool === "AskUserQuestion" ? "stellt dir eine Frage" : `fragt: darf ich ${p.display || p.tool} verwenden?`;
+      notify(info.sid, s.title, text, true);
+      pushFeed(info.sid, s.title, text, () => openLog(info.sid), true);
+      const n = nodes.get(info.sid);
+      if (n) n.flareAt = performance.now();
+    }
+    if (s) prevKinds.set(s.id, stateFor(s).kind);
+    if (!isAsking(info)) { const f = $("feed").querySelector(`[data-id="${info.sid}"]`); if (f && /fragt:|Frage/.test(f.textContent)) f.remove(); }
+    if (info.status === "off" && info.error && logId === info.sid) consoleError = info.error;
+    renderCards(); renderCounts(); renderList(); renderOverview(); dirty = true;
+    if (logId === info.sid) { renderPaneHead(); renderConsole(); renderLive(); }
+  }
+  function onDelta({ sid, text }) {
+    partials.set(sid, (partials.get(sid) || "") + text);
+    if (logId === sid) renderLive();
+  }
+  function onDone({ sid, error, note }) {
+    const s = byId.get(sid);
+    if (logId === sid) { fillLog(sid, false); post(`/api/sessions/${encodeURIComponent(sid)}/seen`).catch(() => {}); return; }
+    if (s) { notify(sid, s.title, error ? `Fehler: ${error}` : `Fertig${note ? ": " + note : ""}`, !!error); pushFeed(sid, s.title, error ? `Fehler: ${error}` : `Fertig${note ? ": " + note : ""}`, () => openLog(sid)); }
+  }
+
+  // ---------- Daten ----------
+  let loading = false, again = false, syncRuns = true;
+  async function load() {
+    if (loading) { again = true; return; }
+    loading = true;
+    try {
+      const data = await (await fetch("/api/sessions")).json();
+      serverSkew = data.now - Date.now();
+      const prev = byId;
+      sessions = data.sessions;
+      byId = new Map(sessions.map(s => [s.id, s]));
+      if (syncRuns) {
+        syncRuns = false;
+        runs.clear();
+        for (const s of sessions) if (s.run) { runs.set(s.id, s.run); partials.set(s.id, s.run.partial || ""); }
+      }
+      // Was du hier gerade offen hast, zählt nicht als ungelesen
+      if (logId && byId.has(logId) && byId.get(logId).state && byId.get(logId).state.kind === "done") { byId.get(logId).state.kind = "idle"; byId.get(logId).state.unread = false; }
+      const key = sessions.map(s => s.id + groupKey(s)).sort().join("|");
+      if (key !== layoutKey) { layoutKey = key; computeLayout(sessions); }
+      else for (const n of nodes.values()) n.s = byId.get(n.s.id);
+      if (!firstLoad) watchTransitions(); else for (const s of sessions) prevKinds.set(s.id, stateFor(s).kind);
+      renderCards(); renderCounts(); renderList(); renderOverview();
+      if (logId && byId.has(logId)) renderPaneHead();
+      if (pendingOpen && byId.has(pendingOpen)) {
+        const id = pendingOpen;
+        pendingOpen = null;
+        goTo(id);
+      }
+      document.querySelector(".empty")?.remove();
+      if (!sessions.length && !isCockpit()) {
+        const d = document.createElement("div");
+        d.className = "empty";
+        d.innerHTML = `<div><strong>Noch keine Sterne am Himmel</strong>Im Ordner <code>${esc(data.dir)}</code> liegen keine Sessions.</div>`;
+        document.body.appendChild(d);
+      }
+      if (firstLoad) {
+        firstLoad = false;
+        const order = [...nodes.values()].sort((a, b) => (a.s.start || a.s.end).localeCompare(b.s.start || b.s.end));
+        order.forEach((n, i) => n.born = order.length > 1 ? (i / (order.length - 1)) * .85 : 0);
+        introStart = performance.now();
+        const v = allView();
+        setView(v.x, v.y, v.k);
+      } else {
+        for (const s of sessions) {
+          const p = prev.get(s.id);
+          if (!p || p.end !== s.end || p.sizeKB !== s.sizeKB) ping(s);
+        }
+      }
+      dirty = true;
+    } catch (err) {
+      console.warn("Laden fehlgeschlagen", err);
+    } finally {
+      loading = false;
+      if (again) { again = false; load(); }
+    }
+  }
+
+  function connect() {
+    let es;
+    try { es = new EventSource("/api/events"); } catch { return; }
+    es.onmessage = () => load();
+    es.addEventListener("run", e => onRun(JSON.parse(e.data)));
+    es.addEventListener("delta", e => onDelta(JSON.parse(e.data)));
+    es.addEventListener("done", e => onDone(JSON.parse(e.data)));
+    es.onopen = () => { syncRuns = true; load(); };
+  }
+
+  // ---------- Start ----------
+  document.body.classList.toggle("side-open", store.get("sc-side", innerWidth >= 1100));
+  const savedSort = store.get("sc-sort", "state");
+  if (SORTS[savedSort] || savedSort === "project") filt.sort = savedSort;
+  $("sSort").value = filt.sort;
+  setPref("notify", prefs.notify && "Notification" in window && Notification.permission === "granted");
+  setMode(store.get("sc-mode", "cockpit"));
+  resize();
+  requestAnimationFrame(frame);
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { dirty = true; });
+  load();
+  connect();
+  setInterval(load, 20000);
+  setInterval(() => { if (!document.hidden) { renderList(); renderOverview(); if (logId) renderPaneHead(); } }, 60000); // "seit x Min." aktuell halten
+})();
+</script>
+</body>
+</html>
