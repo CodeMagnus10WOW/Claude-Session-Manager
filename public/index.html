@@ -318,6 +318,7 @@
   .figures { display: flex; gap: 18px; margin-top: auto; padding-bottom: 12px; }
   .fig b { display: block; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--parchment); line-height: 1.2; }
   .fig span { font-size: 11px; color: var(--dim); }
+  .fig.extra b { color: var(--text-2); }
   .preview { display: none; position: absolute; inset: 0 0 0 0; padding: 4px 18px 14px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
   .z-near .summary { display: none; }
   .z-near .preview { display: block; }
@@ -770,12 +771,13 @@
     </svg>`;
   }
 
+  // Claude schreibt die Kosten nur, wenn ein Prozess endet; sie können hinter dem Verlauf zurückliegen
+  const costHint = s => `Kosten, Stand: Ende des letzten Laufs${s.costAt ? ` (${fmtTime(s.costAt)})` : ""}`;
   function cardHtml(s, c) {
     const preview = s.preview.map(m => m.r === "tools"
       ? `<div class="msg tools">${m.tools.slice(-4).map(t => `<i>${esc(t.name)}</i> ${esc(t.hint.slice(0, 60))}`).join("<br>")}</div>`
       : m.r === "note" ? `<div class="msg tools">${esc(m.t)}</div>`
       : `<div class="msg ${m.r}"><div class="clip">${md(m.t)}</div></div>`).join("");
-    const third = s.cost != null ? [`$${s.cost.toFixed(2)}`, "Kosten"] : [fmtNum(s.outTokens), "Tokens erzeugt"];
     return `
       <div class="card-head">
         <div class="card-kicker"><span class="dot"></span><span class="proj">${esc(groupName(s))}</span>
@@ -789,7 +791,8 @@
           <div class="figures">
             <div class="fig"><b>${s.userMsgs}</b><span>Prompts</span></div>
             <div class="fig"><b>${fmtNum(s.toolCalls)}</b><span>Tool-Aufrufe</span></div>
-            <div class="fig"><b>${third[0]}</b><span>${third[1]}</span></div>
+            <div class="fig"><b>${fmtNum(s.outTokens)}</b><span>Tokens erzeugt</span></div>
+            ${s.cost != null ? `<div class="fig extra" title="${esc(costHint(s))}"><b>$${s.cost.toFixed(2)}</b><span>Kosten, Stand</span></div>` : ""}
           </div>
         </div>
         <div class="preview">${preview}</div>
@@ -1493,7 +1496,8 @@
     $("logFacts").innerHTML = [
       ["Zeitraum", `${fmtTime(s.start)} bis ${fmtTime(s.end)}`],
       ["Prompts", s.userMsgs], ["Tool-Aufrufe", fmtNum(s.toolCalls)],
-      s.cost != null ? ["Kosten", `$${s.cost.toFixed(2)}`] : ["Tokens erzeugt", fmtNum(s.outTokens)],
+      ["Tokens erzeugt", fmtNum(s.outTokens)],
+      s.cost != null ? [costHint(s), `$${s.cost.toFixed(2)}`] : null,
       s.linesAdded || s.linesRemoved ? ["Zeilen", `+${s.linesAdded} / −${s.linesRemoved}`] : null,
       s.model ? ["Modell", s.model.replace(/^claude-/, "")] : null,
       ["Entstanden in", FROM[s.opener.from] + (s.opener.archived ? " (archiviert)" : "")],

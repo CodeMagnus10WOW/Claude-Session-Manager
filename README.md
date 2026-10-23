@@ -60,7 +60,8 @@ Zoomst du hinein, wird aus dem Stern eine Karte und schließlich der laufende Ve
   die Sessions eines Projekts in der Reihenfolge, in der sie entstanden sind.
   Laufende Sessions senden grüne Wellen aus.
 - **Näher dran**: Karten mit letztem Prompt, Aktivitätskurve über die Dauer der Session,
-  Prompts, Tool-Aufrufe und Kosten bzw. erzeugte Tokens.
+  Prompts, Tool-Aufrufe, erzeugte Tokens und, falls bekannt, die Kosten.
+  Die Kosten schreibt Claude erst, wenn ein Prozess endet; sie zeigen den Stand am Ende des letzten Laufs.
 - **Ganz nah**: die letzten Nachrichten und Tool-Aufrufe, live.
 - **Logbuch**: der komplette Verlauf mit Formatierung, Werkzeuge eingeklappt.
 - **Funksprüche** oben rechts: Sobald eine Session eine neue Nachricht bekommt,
