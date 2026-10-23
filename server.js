@@ -648,6 +648,16 @@ function markSeen(id) {
   seenTimer = setTimeout(() => fs.writeFile(SEEN_FILE, JSON.stringify(Object.fromEntries(seen)), () => {}), 500);
 }
 
+// Archiviert: wann du eine Session hier archiviert hast (0 = ausdrücklich zurückgeholt).
+// Tut sich danach etwas in ihr, ist sie von selbst wieder da. Ohne Eintrag zählt das Archiv der Claude-App.
+const ARCHIVE_FILE = path.join(os.tmpdir(), "session-canvas-archived.json");
+const archived = new Map();
+try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(ARCHIVE_FILE, "utf8")))) archived.set(k, v); } catch {}
+function setArchived(id, on) {
+  archived.set(id, on ? Date.now() : 0);
+  fs.writeFile(ARCHIVE_FILE, JSON.stringify(Object.fromEntries(archived)), () => {});
+}
+
 const STALL_MS = 3 * 60 * 1000;   // so lange darf Claudes Zug still sein, bevor er als hängend gilt
 const FRESH_MS = 6 * 60 * 60 * 1000; // ohne Gesehen-Info gelten nur so junge Antworten als ungelesen
 
@@ -690,6 +700,9 @@ function stateOf(s, st) {
     detail = (wrapIsCurrent && s.wrap.recap) || (summary && summary.status_detail) || (app && app.report) || s.lastClaude.replace(/\s+/g, " ").slice(0, 220);
     if (summary && summary.status_category === "blocked") { kind = "needs_you"; since = endMs; }
   }
+  // Archiviert schlägt alles außer Arbeit und einer Erlaubnis, auf die unser eigener Prozess wartet
+  const isArchived = archived.has(s.id) ? archived.get(s.id) >= endMs : !!(app && app.archived);
+  if (isArchived && kind !== "working" && !(run && run.pending.size)) { kind = "archived"; since = null; }
   return { kind, detail: String(detail || "").slice(0, 300), unread, since, yourTurn: !claudesTurn, actions: wrapIsCurrent ? s.wrap.actions : [] };
 }
 
@@ -792,11 +805,17 @@ const server = http.createServer(async (req, res) => {
         const body = await readJson(req);
         return send(res, 200, { ok: true, id: newSession(body.cwd, body.text, body.mode) });
       }
-      const pm = url.pathname.match(/^\/api\/sessions\/([\w-]+)\/(send|permission|interrupt|release|open|open-file|seen)$/);
+      const pm = url.pathname.match(/^\/api\/sessions\/([\w-]+)\/(send|permission|interrupt|release|open|open-file|seen|archive|unarchive)$/);
       if (!pm) return send(res, 404, { error: "not found" });
       const [, id, action] = pm;
       const body = await readJson(req);
       if (action === "seen") { markSeen(id); return send(res, 200, { ok: true }); }
+      if (action === "archive" || action === "unarchive") {
+        if (!findSession(id)) return send(res, 404, { error: "Diese Session gibt es nicht." });
+        setArchived(id, action === "archive");
+        pushChange();
+        return send(res, 200, { ok: true });
+      }
       if (action === "open") return send(res, 200, { ok: true, opened: openSession(id, body.target) });
       if (action === "open-file") { openFile(id, String(body.path || "")); return send(res, 200, { ok: true, with: fileOpener() }); }
       if (action === "send") {
