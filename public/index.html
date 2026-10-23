@@ -159,7 +159,10 @@
   #log .close { position: absolute; top: 10px; right: 12px; background: none; border: 1px solid transparent; border-radius: 8px; font-size: 13px;
     color: var(--dim); cursor: pointer; padding: 4px 10px; }
   #log .close:hover { color: var(--parchment); border-color: var(--rule); }
-  #log .path { color: var(--faint); font: 11px var(--mono); word-break: break-all; }
+  /* Platz für den absolut positionierten Übersicht-Knopf, sonst überlagert er die Zeitangabe */
+  #log .card-kicker { margin-right: 84px; }
+  /* Eine Zeile mit Anfang … Ende des Pfads; der volle Pfad steht im Tooltip */
+  #log .path { color: var(--faint); font: 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
   .card-kicker { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
   .card-kicker .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
   .card-kicker .proj { color: color-mix(in srgb, var(--c) 75%, var(--parchment)); font-weight: 500; }
@@ -1451,6 +1454,7 @@
     L.style.setProperty("--c", c);
     $("logTitle").textContent = s.title;
     $("logPath").textContent = s.cwd + (s.branch && s.branch !== "HEAD" ? `  (${s.branch})` : "");
+    $("logPath").title = $("logPath").textContent;
     $("logOpen").textContent = OPEN_LABEL[s.opener.kind];
     $("logOpen").title = openHint(s);
     $("logTerm").hidden = s.opener.kind === "terminal";
