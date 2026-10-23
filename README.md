@@ -130,6 +130,12 @@ zwei Programme in denselben Verlauf, und er kann sich aufspalten. Die Oberfläch
 eine Session in den letzten Minuten woanders aktiv war. Für Sessions, die in der Claude-App
 laufen, ist „Remote Control“ der App der sichere Weg, sie von woanders zu steuern.
 
+Hat sich ein Verlauf aufgespalten (zwei Programme haben geschrieben, oder in der Claude-App wurde
+zurückgesprungen), steht bei der Session „Verlauf aufgespalten“. Canvas zeigt dann nur den Zweig,
+der zuletzt weitergeschrieben wurde, und markiert im Logbuch die Stelle, an der sich der Verlauf
+geteilt hat. Der andere Zweig bleibt in der Datei erhalten, wird aber nicht mehr angezeigt.
+Parallele Tool-Aufrufe zählen nicht als Aufspaltung, auch wenn sie im Transkript verzweigt sind.
+
 Voraussetzung: Claude Code (`claude`) ist installiert und angemeldet. Liegt es nicht im PATH:
 `CLAUDE_BIN=C:\pfad\claude.exe node server.js`.
 
