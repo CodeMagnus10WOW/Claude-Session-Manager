@@ -461,6 +461,21 @@
               <option value="acceptEdits">Dateiänderungen erlauben</option>
               <option value="plan">Nur planen</option>
             </select>
+            <select id="cModel" aria-label="Modell" title="Modell. Ein Wechsel startet Claude für diese Session neu.">
+              <option value="">Modell der Session</option>
+              <option value="claude-fable-5-1">Fable 5.1</option>
+              <option value="claude-opus-5-5">Opus 5.5</option>
+              <option value="claude-sonnet-5-5">Sonnet 5.5</option>
+              <option value="claude-haiku-5-5">Haiku 5.5</option>
+            </select>
+            <select id="cEffort" aria-label="Effort" title="Wie gründlich Claude nachdenkt. Ein Wechsel startet Claude für diese Session neu.">
+              <option value="">Effort: Standard</option>
+              <option value="low">Effort: low</option>
+              <option value="medium">Effort: medium</option>
+              <option value="high">Effort: high</option>
+              <option value="xhigh">Effort: xhigh</option>
+              <option value="max">Effort: max</option>
+            </select>
             <span class="state" id="cState"></span>
             <button type="button" class="btn" id="cStop" hidden>Stoppen</button>
             <button type="button" class="btn" id="cRelease" hidden title="Den Claude-Prozess dieser Session beenden">Trennen</button>
@@ -1836,7 +1851,7 @@
   });
 
   // ---------- Weiterarbeiten: Nachrichten senden, Erlaubnisse geben ----------
-  let consoleError = "", permsKey = "";
+  let consoleError = "", permsKey = "", settingsKey = "";
 
   function renderLive() {
     if (!logId) return;
@@ -1896,6 +1911,14 @@
     $("cStop").hidden = !busy && !pending.length;
     $("cRelease").hidden = !r || busy || pending.length > 0;
     if (r && r.mode) $("cMode").value = r.mode;
+    // Modell und Effort nur übernehmen, wenn Session oder Prozess wechseln, sonst geht deine Auswahl verloren
+    const settingsNow = `${logId}|${r ? `${r.model}|${r.effort}` : "-"}`;
+    if (settingsNow !== settingsKey) {
+      settingsKey = settingsNow;
+      $("cModel").value = (r && r.model) || "";
+      $("cEffort").value = (r && r.effort) || "";
+    }
+    $("cModel").options[0].textContent = s && s.model ? `Modell der Session (${s.model.replace(/^claude-/, "")})` : "Modell der Session";
     $("cSend").textContent = s && elsewhere(s) ? "Trotzdem senden" : busy ? "Nachschieben" : "Senden";
   }
 
@@ -1911,7 +1934,7 @@
     box.querySelector(".msg.live") ? box.insertBefore(pend, box.querySelector(".msg.live")) : box.appendChild(pend);
     box.scrollTop = box.scrollHeight;
     try {
-      await post(`/api/sessions/${encodeURIComponent(id)}/send`, { text, mode: $("cMode").value });
+      await post(`/api/sessions/${encodeURIComponent(id)}/send`, { text, mode: $("cMode").value, model: $("cModel").value, effort: $("cEffort").value });
       if ($("cInput").value.trim() === text) { $("cInput").value = ""; autosize(); }
     } catch (err) {
       pend.remove();
