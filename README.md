@@ -21,6 +21,12 @@ Das Cockpit ist die Standardansicht. Jede Session hat einen Zustand:
 | **Fertig, ungelesen** | Claude ist fertig, und du hast die Antwort noch nicht angesehen |
 | **Arbeitet** | Claude ist gerade dran |
 | **Ruht** | nichts offen |
+| **Archiviert** | von dir hier oder in der Claude-App archiviert |
+
+**Archivieren** (auf der Kachel und in der Session) nimmt eine Session, die dich braucht, hängt
+oder fertig ist, aus diesen Gruppen heraus. Sie steht dann ganz unten unter „Archiviert“ und zählt
+nicht mehr mit. Tut sich in ihr etwas Neues, ist sie von selbst wieder da. „Zurückholen“ macht es
+sofort rückgängig. Das Archiv des Canvas ist unabhängig vom Archiv der Claude-App.
 
 Der Zustand kommt aus dem Verlauf (wer ist dran, wie lange ist es still), aus der
 Claude-App (Zusammenfassung des letzten Zugs, „braucht Aktion“, wann du die Session

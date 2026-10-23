@@ -438,6 +438,7 @@
         <div class="actions">
           <button class="btn primary" id="logOpen">Öffnen</button>
           <button class="btn" id="logTerm" hidden>Im Terminal öffnen</button>
+          <button class="btn" id="logArchive" hidden>Archivieren</button>
           <button class="btn" id="logZoom">Auf der Karte</button>
           <button class="btn" id="logCopy">Befehl kopieren</button>
         </div>
@@ -528,6 +529,7 @@
     done: { label: "Fertig, ungelesen", cls: "done", order: 2 },
     working: { label: "Arbeitet", cls: "on", order: 3 },
     idle: { label: "Ruht", cls: "idle", order: 4 },
+    archived: { label: "Archiviert", cls: "idle", order: 5 },
   };
 
   const $ = id => document.getElementById(id);
@@ -600,7 +602,7 @@
   }
   function runTag(s) {
     const st = stateFor(s), d = STATES[st.kind];
-    if (st.kind === "idle") return "";
+    if (st.kind === "idle" || st.kind === "archived") return "";
     return `<span class="${st.kind === "needs_you" ? "ask-tag" : "live-tag"}">${d.label}</span>`;
   }
 
@@ -1078,7 +1080,7 @@
     for (const n of nodes.values()) {
       const k = stateFor(n.s).kind;
       g.fillStyle = k === "needs_you" ? "#c9a86a" : k === "working" ? "#8fb8ea" : rgba(n.c, matches(n.s) ? .95 : .25);
-      g.beginPath(); g.arc(R + n.cx * sc, R + n.cy * sc, k === "idle" ? 1.6 : 2.6, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(R + n.cx * sc, R + n.cy * sc, k === "idle" || k === "archived" ? 1.6 : 2.6, 0, Math.PI * 2); g.fill();
     }
     const [wx0, wy0] = toWorld(0, 0), [wx1, wy1] = toWorld(W, H);
     g.save(); g.beginPath(); g.arc(R, R, R - 1, 0, Math.PI * 2); g.clip();
@@ -1461,6 +1463,8 @@
     const ps = $("paneState");
     ps.className = "pstate " + d.cls;
     ps.innerHTML = `<span class="badge">${d.label}</span><span class="det">${esc(st.detail || (st.kind === "idle" ? "Keine offenen Punkte." : ""))}</span>${st.since ? `<span class="since">${since(st.since)}</span>` : ""}`;
+    $("logArchive").hidden = !(CAN_ARCHIVE.has(st.kind) && !st.ours) && st.kind !== "archived";
+    $("logArchive").textContent = st.kind === "archived" ? "Zurückholen" : "Archivieren";
     const acts = st.kind === "working" ? [] : (st.actions || []);
     $("paneReplies").hidden = !acts.length;
     $("paneReplies").innerHTML = acts.map(a => `<button type="button" class="btn" data-reply="${esc(a.message)}" title="Schickt: ${esc(a.message)}">${esc(a.label)}</button>`).join("");
@@ -1528,6 +1532,7 @@
   };
   $("logOpen").onclick = () => logId && openElsewhere(logId);
   $("logTerm").onclick = () => logId && openElsewhere(logId, "terminal");
+  $("logArchive").onclick = () => logId && setArchived(logId, stateFor(byId.get(logId)).kind !== "archived").catch(err => pushFeed(logId, byId.get(logId)?.title || logId, err.message, () => {}));
   $("paneReplies").addEventListener("click", e => { const b = e.target.closest("[data-reply]"); if (b && logId) sendText(logId, b.dataset.reply); });
   let noteTimer = null;
   $("noteInput").addEventListener("input", e => {
@@ -1604,7 +1609,7 @@
   const SPLIT_LABEL = "Verlauf aufgespalten";
   function itemHtml(s, idx) {
     const st = stateFor(s), d = STATES[st.kind], note = notes[s.id];
-    const det = st.kind === "idle" ? "" : st.detail;
+    const det = st.kind === "idle" || st.kind === "archived" ? "" : st.detail;
     return `<button class="item ${d.cls}${s.id === (logId || selectedId) ? " sel" : ""}" data-id="${s.id}" style="--c:${colorOf(groupKey(s))}"
       title="${esc(d.label)}${st.detail ? ": " + esc(st.detail) : ""}">
       <span class="dot"></span><strong>${esc(s.title)}</strong>${idx < 9 ? `<span class="key">${idx + 1}</span>` : "<span></span>"}
@@ -1723,6 +1728,8 @@
     for (const a of (st.kind === "working" ? [] : st.actions || []).slice(0, 2)) actions.push(`<button type="button" class="btn" data-act="reply" data-reply="${esc(a.message)}">${esc(a.label)}</button>`);
     if (st.kind === "done") actions.push(`<button type="button" class="btn" data-act="seen">Gelesen</button>`);
     if (st.kind === "working" && r) actions.push(`<button type="button" class="btn" data-act="stop">Stoppen</button>`);
+    if (CAN_ARCHIVE.has(st.kind) && !st.ours) actions.push(`<button type="button" class="btn" data-act="archive">Archivieren</button>`);
+    if (st.kind === "archived") actions.push(`<button type="button" class="btn" data-act="unarchive">Zurückholen</button>`);
     return `<article class="tile ${d.cls}${s.id === (logId || selectedId) ? " sel" : ""}" data-id="${s.id}" tabindex="0" role="button">
       <div class="tile-top"><span class="badge">${d.label}</span><span>${st.since ? since(st.since) : ago(s.end)}</span>${s.split ? `<span class="split">${SPLIT_LABEL}</span>` : ""}<span class="proj" title="${esc(s.cwd)}">${esc(groupName(s))}</span></div>
       <h3>${esc(s.title)}</h3>
@@ -1731,6 +1738,15 @@
       ${note ? `<p class="note">${esc(note)}</p>` : ""}
       ${actions.length ? `<div class="tile-actions">${actions.join("")}</div>` : ""}
     </article>`;
+  }
+  // Archivieren: die Session wandert aus "Braucht dich" ins Archiv, bis sich in ihr wieder etwas tut
+  const CAN_ARCHIVE = new Set(["needs_you", "stalled", "done"]);
+  async function setArchived(id, on) {
+    await post(`/api/sessions/${encodeURIComponent(id)}/${on ? "archive" : "unarchive"}`);
+    const s = byId.get(id);
+    if (on && s && s.state) s.state.kind = "archived";
+    prevKinds.delete(id); // eigene Aktion, keine Benachrichtigung beim Zurückholen
+    renderList(); renderCounts(); renderOverview(); if (logId === id) renderPaneHead();
   }
   function renderOverview() {
     if (!isCockpit() || logId) return;
@@ -1769,6 +1785,7 @@
       else if (a === "reply") sendText(id, act.dataset.reply);
       else if (a === "seen") { const s = byId.get(id); if (s && s.state) { s.state.unread = false; s.state.kind = "idle"; } post(`/api/sessions/${encodeURIComponent(id)}/seen`).catch(() => {}); renderList(); renderCounts(); renderOverview(); }
       else if (a === "stop") await post(`/api/sessions/${encodeURIComponent(id)}/interrupt`);
+      else if (a === "archive" || a === "unarchive") await setArchived(id, a === "archive");
       else if (a === "elsewhere") openElsewhere(id);
       else openLog(id);
     } catch (err) { pushFeed(id, byId.get(id)?.title || id, err.message, () => openLog(id)); }
