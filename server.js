@@ -896,6 +896,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Nur lokal erreichbar – die Transkripte sind privat.
+server.on("error", e => {
+  if (e.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} ist schon belegt – läuft Session Canvas schon? Beende die alte Instanz zuerst (sonst siehst du im Browser weiter die alte Version), oder starte mit PORT=${PORT + 1} node server.js`);
+    process.exit(1);
+  }
+  throw e;
+});
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Session Canvas läuft auf http://localhost:${PORT}`);
   console.log(`Lese Sessions aus ${PROJECTS_DIR}`);
