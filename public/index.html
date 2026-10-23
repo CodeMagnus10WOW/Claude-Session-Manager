@@ -139,6 +139,7 @@
   .item.warn small.det { color: var(--rose); }
   .item small.note { color: var(--brass); }
   .item small.note::before { content: "Notiz: "; color: var(--faint); }
+  .item small.split, .tile-top .split { color: var(--rose); white-space: nowrap; }
   .item .key { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; }
   .side-empty { padding: 18px 10px; color: var(--dim); font-size: 13px; }
   .side-empty button { margin-top: 8px; }
@@ -1600,6 +1601,7 @@
     },
   };
   let listOrder = [];
+  const SPLIT_LABEL = "Verlauf aufgespalten";
   function itemHtml(s, idx) {
     const st = stateFor(s), d = STATES[st.kind], note = notes[s.id];
     const det = st.kind === "idle" ? "" : st.detail;
@@ -1608,6 +1610,7 @@
       <span class="dot"></span><strong>${esc(s.title)}</strong>${idx < 9 ? `<span class="key">${idx + 1}</span>` : "<span></span>"}
       ${det ? `<small class="det">${esc(det)}</small>` : ""}
       ${note ? `<small class="note">${esc(note)}</small>` : ""}
+      ${s.split ? `<small class="split">${SPLIT_LABEL}</small>` : ""}
       <small>${filt.sort === "project" ? "" : esc(groupName(s)) + ", "}${st.since ? since(st.since) : ago(s.end)}${filt.sort === "state" ? "" : `, ${d.label}`}</small></button>`;
   }
   function renderList() {
@@ -1721,7 +1724,7 @@
     if (st.kind === "done") actions.push(`<button type="button" class="btn" data-act="seen">Gelesen</button>`);
     if (st.kind === "working" && r) actions.push(`<button type="button" class="btn" data-act="stop">Stoppen</button>`);
     return `<article class="tile ${d.cls}${s.id === (logId || selectedId) ? " sel" : ""}" data-id="${s.id}" tabindex="0" role="button">
-      <div class="tile-top"><span class="badge">${d.label}</span><span>${st.since ? since(st.since) : ago(s.end)}</span><span class="proj" title="${esc(s.cwd)}">${esc(groupName(s))}</span></div>
+      <div class="tile-top"><span class="badge">${d.label}</span><span>${st.since ? since(st.since) : ago(s.end)}</span>${s.split ? `<span class="split">${SPLIT_LABEL}</span>` : ""}<span class="proj" title="${esc(s.cwd)}">${esc(groupName(s))}</span></div>
       <h3>${esc(s.title)}</h3>
       ${st.detail ? `<p class="det">${esc(st.detail)}</p>` : s.lastPrompt ? `<p class="det">Zuletzt: ${esc(s.lastPrompt)}</p>` : ""}
       ${pi ? `<div class="plan-bar"><i style="width:${Math.round(pi.done / pi.total * 100)}%"></i></div><div class="plan-line">${pi.done} von ${pi.total}${pi.cur ? `: ${esc(pi.cur.t)}` : ""}</div>` : ""}
@@ -1861,6 +1864,7 @@
     const notesHtml = [];
     if (consoleError) notesHtml.push(`<div class="notice error">${esc(consoleError)}</div>`);
     if (r && r.error) notesHtml.push(`<div class="notice error">${esc(r.error)}</div>`);
+    if (s && s.split) notesHtml.push(`<div class="notice">Der Verlauf dieser Session hat sich aufgespalten, etwa weil zwei Programme gleichzeitig geschrieben haben oder in der Claude-App zurückgesprungen wurde. Angezeigt wird nur der Zweig, der zuletzt weitergeschrieben wurde. Mit ihm macht auch „Weiterarbeiten“ weiter.</div>`);
     if (s && elsewhere(s)) notesHtml.push(`<div class="notice">Diese Session war gerade eben woanders aktiv, etwa in der Claude-App oder einem Terminal. Schreibst du hier, arbeiten zwei Programme im selben Verlauf und er kann sich aufspalten. Am sichersten wartest du, bis sie dort fertig ist.</div>`);
     $("notice").innerHTML = notesHtml.join("");
     const st = $("cState"), busy = isBusy(r);

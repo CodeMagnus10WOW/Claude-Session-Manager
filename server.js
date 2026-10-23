@@ -13,6 +13,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+const { treeNode, deadBranches } = require("./branches");
 
 const PORT = Number(process.env.PORT) || 4747;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
@@ -76,6 +77,7 @@ function emptySession(file, projectDir) {
     last: null,       // letzter Eintrag: wer ist dran? { r, kind, tools, ts }
     plan: null,       // Aufgabenliste aus update_plan, nachgespielt
     wrap: null,       // letzter Abschluss (wrap_up): recap, ask, actions
+    split: 0,         // Stellen, an denen sich der Verlauf aufgespalten hat
     question: null,   // letzte Frage per AskUserQuestion
     lastClaude: "",   // letzter Antworttext von Claude
     lastYou: "",      // letzter Prompt
@@ -84,9 +86,7 @@ function emptySession(file, projectDir) {
   };
 }
 
-function processLine(s, line) {
-  let o;
-  try { o = JSON.parse(line); } catch { return; }
+function processEntry(s, o) {
   const t = o.type;
   if (t === "custom-title") s.customTitle = o.customTitle || s.customTitle;
   else if (t === "ai-title") s.aiTitle = o.aiTitle || s.aiTitle;
@@ -182,6 +182,23 @@ function processLine(s, line) {
   }
 }
 
+function readRange(file, from, len) {
+  const chunk = Buffer.alloc(Math.max(0, len));
+  if (!chunk.length) return chunk;
+  const fd = fs.openSync(file, "r");
+  try { fs.readSync(fd, chunk, 0, chunk.length, from); } finally { fs.closeSync(fd); }
+  return chunk;
+}
+
+function entriesOf(buf) {
+  const out = [];
+  for (const line of buf.toString("utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try { out.push(JSON.parse(line)); } catch { /* kaputte Zeile überspringen */ }
+  }
+  return out;
+}
+
 function parseSession(file, projectDir) {
   const st = fs.statSync(file);
   let c = cache.get(file);
@@ -189,22 +206,36 @@ function parseSession(file, projectDir) {
 
   let from = 0;
   if (c && st.size > c.size) from = c.size; // nur das Neue lesen
-  else c = { s: emptySession(file, projectDir), rest: Buffer.alloc(0) };
+  else c = { s: emptySession(file, projectDir), rest: Buffer.alloc(0), nodes: new Map(), leaf: null, sig: "" };
 
-  const len = st.size - from;
-  let buf = c.rest;
-  if (len > 0) {
-    const fd = fs.openSync(file, "r");
-    try {
-      const chunk = Buffer.alloc(len);
-      fs.readSync(fd, chunk, 0, len, from);
-      buf = Buffer.concat([c.rest, chunk]);
-    } finally { fs.closeSync(fd); }
-  }
+  const start = from - c.rest.length; // ab hier steht buf in der Datei
+  const buf = Buffer.concat([c.rest, readRange(file, from, st.size - from)]);
   // Nur bis zum letzten Zeilenumbruch verarbeiten, den Rest (halbe Zeile) aufheben
   const cut = buf.lastIndexOf(0x0a) + 1;
   c.rest = buf.subarray(cut);
-  for (const line of buf.subarray(0, cut).toString("utf8").split("\n")) if (line.trim()) processLine(c.s, line);
+  let entries = entriesOf(buf.subarray(0, cut));
+
+  // Verlaufsbaum mitführen; aktiv ist der Zweig mit dem zuletzt geschriebenen Prompt bzw. der letzten Antwort
+  for (const o of entries) {
+    if (!o.uuid || o.isSidechain) continue;
+    c.nodes.set(o.uuid, treeNode(o));
+    if (o.type === "user" || o.type === "assistant") c.leaf = o.uuid;
+  }
+  const br = deadBranches(c.nodes, c.leaf);
+  if (br.sig !== c.sig && from > 0) {
+    // Neue Aufspaltung oder anderer Zweig aktiv: alles bisher Gezählte gilt nicht mehr, von vorn auswerten
+    c.s = emptySession(file, projectDir);
+    entries = entriesOf(readRange(file, 0, start + cut));
+  }
+  c.sig = br.sig;
+  for (const o of entries) {
+    if (br.dead.has(o.uuid)) {
+      if (br.forks.has(o.parentUuid)) c.s.messages.push({ r: "note", t: "Hier hat sich der Verlauf aufgespalten, der andere Zweig ist ausgeblendet", ts: o.timestamp });
+      continue;
+    }
+    processEntry(c.s, o);
+  }
+  c.s.split = br.forks.size;
   for (const m of c.s.messages) if (m.tools && m.tools.length > 30) m.tools = m.tools.slice(-30);
 
   c.size = st.size;
@@ -254,6 +285,7 @@ function summarize(s, st) {
     linesAdded: s.linesAdded,
     linesRemoved: s.linesRemoved,
     filesChanged: s.files.size,
+    split: s.split, // Zahl der Stellen, an denen sich der Verlauf aufgespalten hat
     state: stateOf(s, st),
     plan: s.plan,
     wrap: s.wrap,
