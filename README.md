@@ -127,6 +127,10 @@ mit demselben Modell und demselben Verlauf. Danach bleibt der Prozess verbunden:
   beantwortest du genauso.
 - Die Auswahl links unten legt fest, was Claude ohne Nachfrage darf: bei allem fragen,
   Dateiänderungen erlauben oder nur planen.
+- Daneben wählst du **Modell** (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5, ohne Auswahl das
+  Modell der Session) und **Effort** (low bis max, ohne Auswahl der Standard). Beides gilt ab dem
+  Start des Prozesses: Änderst du es, startet Claude für diese Session mit der nächsten Nachricht
+  neu, mit demselben Verlauf. Während Claude arbeitet, geht der Wechsel nicht.
 - **Stoppen** bricht die laufende Antwort ab, **Trennen** beendet den Prozess.
   Nach 15 Minuten ohne Aktivität trennt sich der Prozess von selbst.
 - Während Claude arbeitet, kannst du eine weitere Nachricht nachschieben.

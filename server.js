@@ -375,9 +375,12 @@ lastOurs.set = (k, v) => {
 };
 const IDLE_MS = 15 * 60 * 1000;
 const MODES = { manual: "manual", acceptEdits: "acceptEdits", plan: "plan" };
+// Wählbar in der Session-Eingabe; leer = Modell der Session bzw. Standard-Effort
+const MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
+const EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 function runInfo(r) {
-  return { sid: r.sid, status: r.status, mode: r.mode, note: r.note, partial: r.partial, pending: [...r.pending.values()], error: r.error };
+  return { sid: r.sid, status: r.status, mode: r.mode, model: r.model, effort: r.effort, note: r.note, partial: r.partial, pending: [...r.pending.values()], error: r.error };
 }
 function emitRun(r) { broadcast("run", runInfo(r)); }
 function writeTo(r, obj) {
@@ -399,16 +402,18 @@ function findRaw(id) {
 }
 
 // fresh = neue Session mit dieser ID anlegen statt eine bestehende fortzusetzen
-function startRun(sess, mode, fresh) {
+// model/effort: Auswahl aus MODELS/EFFORTS, sonst Modell der Session und Standard-Effort
+function startRun(sess, mode, fresh, model = "", effort = "") {
   if (!sess.cwd || !fs.existsSync(sess.cwd)) {
     throw new Error(`Den Projektordner dieser Session gibt es nicht mehr (${sess.cwd || "unbekannt"}). Ohne ihn kann Claude dort nicht weiterarbeiten.`);
   }
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
     "--include-partial-messages", "--permission-prompts", "host", "--permission-prompt-tool", "stdio",
     "--permission-mode", MODES[mode] || "manual", fresh ? "--session-id" : "--resume", sess.id];
-  if (sess.model) args.push("--model", sess.model);
+  if (model || sess.model) args.push("--model", model || sess.model);
+  if (effort) args.push("--effort", effort);
   const proc = spawn(CLAUDE_BIN, args, { cwd: sess.cwd, windowsHide: true });
-  const r = { sid: sess.id, proc, status: "starting", mode: MODES[mode] || "manual", note: "", partial: "", pending: new Map(),
+  const r = { sid: sess.id, proc, status: "starting", mode: MODES[mode] || "manual", model, effort, note: "", partial: "", pending: new Map(),
     error: null, stderr: "", buf: "", lastActivity: Date.now() };
   runs.set(sess.id, r);
 
@@ -478,13 +483,22 @@ function onClaudeEvent(r, o) {
   }
 }
 
-function sendMessage(id, text, mode) {
+async function sendMessage(id, text, mode, model, effort) {
   markSeen(id);
+  model = MODELS.has(model) ? model : "";
+  effort = EFFORTS.has(effort) ? effort : "";
   let r = runs.get(id);
+  // Modell und Effort gelten ab dem Start des Prozesses: bei einem Wechsel neu starten
+  if (r && (model !== r.model || effort !== r.effort)) {
+    if (r.status !== "idle") throw new Error("Modell und Effort lassen sich nur wechseln, während Claude nicht arbeitet. Stoppe Claude oder warte, bis der Zug fertig ist.");
+    const old = r;
+    await new Promise(done => { old.proc.once("exit", done); release(id); });
+    r = null;
+  }
   if (!r) {
     const sess = findSession(id);
     if (!sess) throw new Error("Diese Session gibt es nicht.");
-    r = startRun(sess, mode);
+    r = startRun(sess, mode, false, model, effort);
   } else if (mode && MODES[mode] && MODES[mode] !== r.mode) {
     writeTo(r, { type: "control_request", request_id: "mode_" + crypto.randomUUID(), request: { subtype: "set_permission_mode", mode: MODES[mode] } });
     r.mode = MODES[mode];
@@ -496,13 +510,13 @@ function sendMessage(id, text, mode) {
   emitRun(r);
 }
 
-function newSession(dir, text, mode) {
+async function newSession(dir, text, mode) {
   const cwd = path.resolve(String(dir || ""));
   if (!dir || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) throw new Error(`Den Ordner gibt es nicht: ${dir || "(leer)"}`);
   if (!String(text || "").trim()) throw new Error("Schreib Claude, womit es anfangen soll.");
   const id = crypto.randomUUID();
   startRun({ id, cwd, model: null }, mode, true);
-  sendMessage(id, String(text).trim(), mode);
+  await sendMessage(id, String(text).trim(), mode);
   return id;
 }
 
@@ -803,7 +817,7 @@ const server = http.createServer(async (req, res) => {
       if (!postOk(req)) return send(res, 403, { error: "Nicht erlaubt." });
       if (url.pathname === "/api/new") {
         const body = await readJson(req);
-        return send(res, 200, { ok: true, id: newSession(body.cwd, body.text, body.mode) });
+        return send(res, 200, { ok: true, id: await newSession(body.cwd, body.text, body.mode) });
       }
       const pm = url.pathname.match(/^\/api\/sessions\/([\w-]+)\/(send|permission|interrupt|release|open|open-file|seen|archive|unarchive)$/);
       if (!pm) return send(res, 404, { error: "not found" });
@@ -821,7 +835,7 @@ const server = http.createServer(async (req, res) => {
       if (action === "send") {
         const text = String(body.text || "").trim();
         if (!text) return send(res, 400, { error: "Die Nachricht ist leer." });
-        sendMessage(id, text, body.mode);
+        await sendMessage(id, text, body.mode, body.model, body.effort);
       } else if (action === "permission") {
         answerPermission(id, String(body.requestId), !!body.allow, body.answers, body.message);
       } else if (action === "interrupt") interrupt(id);
