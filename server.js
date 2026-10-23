@@ -71,7 +71,7 @@ function emptySession(file, projectDir) {
     customTitle: null, aiTitle: null, firstPrompt: null, lastPrompt: null,
     start: null, end: null,
     userMsgs: 0, assistantMsgs: 0, toolCalls: 0, tools: {},
-    cost: null, linesAdded: 0, linesRemoved: 0,
+    cost: null, costAt: null, linesAdded: 0, linesRemoved: 0,
     outTokens: 0, seenMsgIds: new Set(),
     files: new Map(), // von Claude geschriebene/geänderte Dateien
     last: null,       // letzter Eintrag: wer ist dran? { r, kind, tools, ts }
@@ -92,7 +92,8 @@ function processEntry(s, o) {
   else if (t === "ai-title") s.aiTitle = o.aiTitle || s.aiTitle;
   else if (t === "last-prompt") s.lastPrompt = cleanText(o.lastPrompt) || s.lastPrompt;
   else if (t === "cost-state") {
-    if (typeof o.totalCostUSD === "number") s.cost = o.totalCostUSD;
+    // Claude schreibt die Kosten erst, wenn ein Prozess sauber endet: Stand = letzte Nachricht davor
+    if (typeof o.totalCostUSD === "number") { s.cost = o.totalCostUSD; s.costAt = s.end; }
     s.linesAdded = o.totalLinesAdded || s.linesAdded;
     s.linesRemoved = o.totalLinesRemoved || s.linesRemoved;
   } else if (t === "user" || t === "assistant") {
@@ -281,6 +282,7 @@ function summarize(s, st) {
     toolCalls: s.toolCalls,
     topTools,
     cost: s.cost,
+    costAt: s.costAt,
     outTokens: s.outTokens,
     linesAdded: s.linesAdded,
     linesRemoved: s.linesRemoved,
@@ -595,13 +597,23 @@ function release(id) {
   if (!r) return;
   r.status = "closing";
   try { r.proc.stdin.end(); } catch {}
-  setTimeout(() => { if (runs.get(id) === r) r.proc.kill(); }, 4000);
+  // Erst nach einer Gnadenfrist hart beenden: nur ein sauber beendeter Prozess schreibt seine Kosten ins Transkript
+  setTimeout(() => { if (runs.get(id) === r) r.proc.kill(); }, 30000);
 }
 
 setInterval(() => {
   for (const [id, r] of runs) if (r.status === "idle" && Date.now() - r.lastActivity > IDLE_MS) release(id);
 }, 60 * 1000);
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { for (const r of runs.values()) r.proc.kill(); process.exit(0); });
+// Beim Beenden die Claude-Prozesse sauber schließen (damit ihre Kosten geschrieben werden), höchstens 10 Sekunden.
+// Ein zweites Strg C beendet sofort.
+function shutdown() {
+  if (!runs.size) process.exit(0);
+  console.log(`Beende ${runs.size} Claude-Prozess(e) …`);
+  for (const id of [...runs.keys()]) release(id);
+  setInterval(() => { if (!runs.size) process.exit(0); }, 200);
+  setTimeout(() => { for (const r of runs.values()) r.proc.kill(); process.exit(0); }, 10000);
+}
+for (const sig of ["SIGINT", "SIGTERM"]) process.once(sig, shutdown);
 
 // ---------- Dort öffnen, wo die Session herkommt ----------
 // Die Claude-App führt pro Code-Session eine Datei local_<id>.json mit der zugehörigen
